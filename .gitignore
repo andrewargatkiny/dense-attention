@@ -1,0 +1,16 @@
+# Compiled Python files
+*.pyc
+__pycache__/
+
+# PyCharm files
+.idea/
+
+# Mac files
+.DS_Store
+
+# Environment files
+.env
+venv/
+
+# Log files
+*.log
