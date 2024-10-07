@@ -1,0 +1,12 @@
+numpy
+datasets
+pandas
+tqdm
+Pillow
+torch
+requests
+h5py
+transformers
+deepspeed
+clearml
+tensorboardX
