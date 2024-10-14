@@ -11,12 +11,6 @@ import numpy as np
 from PIL import Image
 from tqdm import tqdm
 
-# Predefined vocabulary for ListOps
-LISTOPS_VOCAB = [
-    "<PAD>", "[MAX", "[MIN", "[MED", "[SM", "]", "0", "1", "2", "3", "4",
-    "5", "6", "7", "8", "9", "<CLS>"
-]
-
 
 def get_samples(base_path: str, data_dir: str):
     # Handle an empty image in one of the datasets
@@ -116,7 +110,7 @@ def main(args):
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    parser = argparse.ArgumentParser(description="Preprocess ListOps dataset")
+    parser = argparse.ArgumentParser(description="Preprocess Pathfinder dataset")
     parser.add_argument(
         "--input_root_dir",
         type=str,

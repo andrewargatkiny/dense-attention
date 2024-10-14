@@ -2,10 +2,9 @@ from dataclasses import dataclass
 from typing import Dict, Type
 
 from src.modeling import BertForPreTrainingNewAttention, BertForSequenceClassification, BertForAANMatching
-from pytorch_pretrained_bert.bert_hf import BertHFForSequenceClassification
 from dataset import (LRADataset, LRATextDataset,
                      DatasetForMLM, TextDatasetForMLM, AANDataset, AANDatasetForMLM, BertPretrainingDataset,
-                     GlueBertDataset)
+                     )
 from utils import eval_classification_task, eval_mlm_classification_task
 
 

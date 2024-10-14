@@ -8,7 +8,7 @@ tar -xvzf "${BASE_DATA_DIR}/lra_release.gz" -C "${BASE_DATA_DIR}/"
 # Convert datasets to required format
 
 # ListOps dataset
-python3 lra/convert_listops.py \
+python3 data_preparation/lra/convert_listops.py \
   --input_path "${BASE_DATA_DIR}/lra_release/listops-1000/basic_train.tsv" \
   --include_cls_token \
   --output_base_dir "${BASE_DATA_DIR}/lra/listops" \
@@ -24,11 +24,15 @@ python3 data_preparation/lra/convert_listops.py \
   --output_base_dir "${BASE_DATA_DIR}/lra/listops" \
   --output_dataset_name "test"
 
+# Cifar10
+python3 data_preparation/lra/convert_cifar.py \
+  --output_base_dir "${BASE_DATA_DIR}/lra/cifar10"
+
 # Pathfinder
 python3 data_preparation/lra/convert_pathfinder.py \
---input_root_dir "${BASE_DATA_DIR}/lra_release/lra_release/pathfinder32" \
---data_subdir curv_contour_length_14 \
---output_base_dir "${BASE_DATA_DIR}/lra/pathfinder32"
+  --input_root_dir "${BASE_DATA_DIR}/lra_release/lra_release/pathfinder32" \
+  --data_subdir curv_contour_length_14 \
+  --output_base_dir "${BASE_DATA_DIR}/lra/pathfinder32"
 
 # Pathfinder-X datasets
 python3 data_preparation/lra/convert_pathfinder.py \

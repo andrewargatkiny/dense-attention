@@ -479,11 +479,15 @@ def report_model_activations(args, model, data, step, bins=20, **kwargs):
             try:
                 vals = values#.mean(axis=-1)
                 val_max, val_min = vals.max(), vals.min()
-                hist, bounds = np.histogram(vals, bins=bins,
-                                            range=(val_min, val_max))
+                if args.no_clearml:
+                    hist, bounds = values, bins
+                else:
+                    hist, bounds = np.histogram(vals, bins=bins,
+                                                range=(val_min, val_max))
+                    bounds = list(bounds)
                 args.tracker_logger.report_histogram(
                     title=name, series=name, values=hist, iteration=step,
-                    xlabels=list(bounds)
+                    xlabels=bounds
                 )
             except Exception as ex:
                 print(ex)
@@ -493,10 +497,14 @@ def report_model_weights(args, model, step, bins=20):
     if master_process(args):
         for name, param in model.named_parameters():
             values = param.detach().cpu().float().numpy()
-            hist, bounds = np.histogram(values, bins=bins, range=(np.nanmin(values), np.nanmax(values)))
+            if args.no_clearml:
+                hist, bounds = values, bins
+            else:
+                hist, bounds = np.histogram(values, bins=bins, range=(np.nanmin(values), np.nanmax(values)))
+                bounds = list(bounds)
             args.tracker_logger.report_histogram(
                 title=name, series=name, values=hist, iteration=step, 
-                xlabels=list(bounds)
+                xlabels=bounds
             )
 
 

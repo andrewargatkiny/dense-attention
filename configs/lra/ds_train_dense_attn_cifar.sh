@@ -1,8 +1,15 @@
 #!/bin/bash
 
 base_dir=`pwd`
+
+SEED=${SEED:-100}
+NODE=${NODE:-0}
+MASTER_PORT=${MASTER_PORT:-29500}
+CONFIG=${CONFIG:-${base_dir}/configs/lra/dense_attn_cifar.json}
+DS_CONFIG=${DS_CONFIG:-${base_dir}/configs/lra/deepspeed_config_cifar.json}
+
 OUTPUT_DIR=${base_dir}/bert_model_dense_attn_adam_outputs
-BASE_JOB_NAME="lra_pathfinder_cifar"
+BASE_JOB_NAME="lra_cifar"
 
 # Default values
 : "${BASE_DATA_DIR:=${base_dir}/data}"
@@ -41,8 +48,8 @@ fi
 
 mkdir -p $OUTPUT_DIR
 
-NCCL_TREE_THRESHOLD=0 deepspeed --include localhost:0 --master_port 29500 ${base_dir}/deepspeed_train.py \
---cf ${base_dir}/configs/lra/dense_attn_cifar.json \
+NCCL_TREE_THRESHOLD=0 deepspeed --include localhost:"$NODE" --master_port "$MASTER_PORT" ${base_dir}/deepspeed_train.py \
+--cf "$CONFIG" \
 --max_seq_length 1024 \
 --output_dir $OUTPUT_DIR \
 --deepspeed \
@@ -52,10 +59,10 @@ NCCL_TREE_THRESHOLD=0 deepspeed --include localhost:0 --master_port 29500 ${base
 --max_validation_samples 10000 \
 --print_steps 5 \
 --log_problematic_weights \
---seed 100 \
+--seed "$SEED" \
 --num_labels 10 \
 --job_name $JOB_NAME \
---deepspeed_config ${base_dir}/configs/lra/deepspeed_config_cifar.json \
+--deepspeed_config "$DS_CONFIG" \
 --data_path_prefix "${BASE_DATA_DIR}/lra/cifar10/" \
 --eval_bs_ratio 2 \
 --inputs_logging_ratio 1.0 \
