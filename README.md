@@ -28,8 +28,8 @@ DenseAttention competes with FlashAttention in speed on small sequences and outp
 
 ### Disclaimer
 
-There’s still work in progress. Both the manuscript and the code are subject to changes. Some configs may be broken. 
-> Current draft of the paper (October 2024) is available at: [DenseAttention.pdf](assets/DenseAttention_paper.pdf)
+The paper is undergoing  a peer review at a major ML conference. However, the code and select parts of the manuscript are subject to changes. 
+> The most recent draft of the paper (October 2024) is available at: [DenseAttention.pdf](assets/DenseAttention_paper.pdf)
 
 ## Implementation and experiments
 
