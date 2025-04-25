@@ -1,3 +1,5 @@
+#!/bin/bash
+
 ENV_NAME="bert_data"
 DATA_DIR="/workspace/data"
 conda create -n $ENV_NAME -y python=3.10

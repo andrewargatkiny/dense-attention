@@ -9,11 +9,11 @@ from src.positional_embeddings import PositionalEmbeddingsTypes
 
 
 class ModelConfig(object):
-    """Configuration class to store the configuration of a `BertModel`.
+    """Configuration class to store the configuration of a `DANetModel`.
     """
 
     def __init__(self,
-                 vocab_size_or_config_json_file,
+                 vocab_size_or_config_json_file=30528,
                  hidden_size=1024,
                  num_hidden_layers=32,
                  num_attention_heads=1,
@@ -21,8 +21,11 @@ class ModelConfig(object):
                  default_ffn_norm=None,
                  hidden_dropout_prob=0,
                  hidden_act="relu",
+                 swiglu_ffn=False,
                  attention_complexity="auto",
                  attention_probs_dropout_prob=0,
+                 pre_attn_ln_type="max_norm",
+                 post_attn_ln_type="max_norm",
                  max_position_embeddings=512,
                  token_type_embeddings=False,
                  embedding_ln_type="hardtanh",
@@ -31,6 +34,7 @@ class ModelConfig(object):
                  pos_emb_type="learned",
                  embedding_dropout=0,
                  relpe_type=None,
+                 relpe_scheme='qkv',
                  final_ln_type=None,
                  pooler_function="mean",
                  pooler_no_dense=False,
@@ -39,8 +43,15 @@ class ModelConfig(object):
                  classifier_bias=False,
                  lm_head_act="gelu",
                  lm_head_ln_type="uncentered_ln",
+                 causal=False,
+                 chunk_size=1024,
                  local_attention=False,
-                 window_size=1024
+                 window_size=1024,
+                 local_relpe=True,
+                 local_scheme="l_sl_g",
+                 hybrid=False,
+                 transformer_heads=None,
+                 attn_proj_biases=False
                  ):
         """Constructs ModelConfig.
 
@@ -59,6 +70,8 @@ class ModelConfig(object):
             hidden_act: The non-linear activation function (function or string)
                 in the encoder. Currently, isn't used anywhere but kept for
                 compatibility with BERT configs.
+            swiglu_ffn: Boolean flag indicating whether to use SwiGLU FFN
+                instead of ordinary one. Default `False`.
             hidden_dropout_prob: The dropout probability after FFN's expansion
                 and contraction transforms and after the pooler.
             attention_complexity: Selection of runtime complexity of
@@ -66,6 +79,10 @@ class ModelConfig(object):
                 'quadratic' or 'auto' (default).
             attention_probs_dropout_prob: The dropout probability at the start
                 of attention sub-layer.
+            pre_attn_ln_type: Type of layer norm to use before the main
+                DenseAttention matrix multiplication kernel. Default: `max_norm`.
+            post_attn_ln_type: Type of layer norm to use after the main
+                DenseAttention matrix multiplication kernel. Default: `max_norm`.
             max_position_embeddings: The maximum sequence length for the model.
                 Impacts shape of learned positional embeddings tensor or, in
                 case of RelPE, shape of precomputed tensor holding trigonometric
@@ -84,6 +101,13 @@ class ModelConfig(object):
             relpe_type: In case the chosen type of positional embeddings is
                 RelPE, then determines which type of RelPEs to use. All
                 possible types are defined in the `RelPEType` enum.
+            relpe_scheme: If relpe are enabled, sets how they are applied.
+                Possible values: 'qkv' (applied to hidden_states at the very
+                start of DenseAttention calculation, BEFORE all the logic);
+                'q', 'k', 'v', 'q,k', 'q,v', 'k,v', 'q,k,v'. In all cases
+                except the first, RelPE apply individually to tensor(s)
+                mentioned in the spec string, where q is queries, k is keys and
+                 v is values.
             final_ln_type: the type of activation function or layer norm right
                 after the last layer in the encoder.
             pooler_function: Function, used to pool all tokens embeddings
@@ -101,11 +125,32 @@ class ModelConfig(object):
             lm_head_act: Type of activation function for Language Modeling head.
             lm_head_ln_type: Type of layer norm or second activation to use
                 after activation in Language Modeling head.
+            causal: Boolean flag indicating whether the model and its layers
+                have decoder architecture (causal language modeling). Default:
+                `False`.
+            chunk_size: Length of a sequence's chunk for causal LM parallel
+                chunk-wise computation algorithm.
             local_attention: Boolean flag indicating whether to use local
                 attention layers scheme. Default: `False`.
-            window_size: length of local attention span in local attention layers.
-
-
+            window_size: length of local attention span in local attention
+                layers. Default: 1024.
+            local_relpe: Applicable only for `local` and `shifted_local` types
+                of layer. For them, it indicates whether to apply RelPE using
+                local or global indices along sequence dimension. Default:
+                `True`.
+            local_scheme: Scheme to form patterns of local and global attention
+                layers. Should contain lowercase-letter layer codes separated
+                by underscore '_'. Available codes: 'l' (local attention), 'sl'
+                (shifted local), 'sw' (sliding window), and 'g' (global).
+                Default: 'l_sl_g'.
+            hybrid: Boolean flag indicating whether to use standard Transformer
+                layers in the model. If `True`, layers corresponding to
+                `softmax` in `local_scheme` are Transformer with Sliding Window
+                Attention. Default: `False`.
+            transformer_heads: Number of heads in Transformer layers for hybrid
+                models. Default: None.
+            attn_proj_biases: Whether to use bias in Q, K, V, O matrices in
+                Transformer layers' attention. Default: `False`.
 
         """
         if isinstance(vocab_size_or_config_json_file,
@@ -122,10 +167,14 @@ class ModelConfig(object):
             self.num_hidden_layers = num_hidden_layers
             self.num_attention_heads = num_attention_heads
             self.intermediate_size = intermediate_size
+            self.hidden_act = hidden_act # left only for compat. with old configs
+            self.swiglu_ffn = swiglu_ffn
             self.default_ffn_norm = default_ffn_norm
             self.hidden_dropout_prob = hidden_dropout_prob
             self.attention_complexity = attention_complexity
             self.attention_probs_dropout_prob = attention_probs_dropout_prob
+            self.pre_attn_ln_type = pre_attn_ln_type
+            self.post_attn_ln_type = post_attn_ln_type
             self.max_position_embeddings = max_position_embeddings
             self.token_type_embeddings = token_type_embeddings
             self.type_vocab_size = type_vocab_size
@@ -134,6 +183,7 @@ class ModelConfig(object):
             self.embedding_ln_type = embedding_ln_type
             self.embedding_dropout = embedding_dropout
             self.relpe_type = relpe_type
+            self.relpe_scheme = relpe_scheme
             self.final_ln_type = final_ln_type
             self.pooler_function = pooler_function
             self.pooler_no_dense = pooler_no_dense
@@ -142,8 +192,16 @@ class ModelConfig(object):
             self.classifier_bias = classifier_bias
             self.lm_head_act = lm_head_act
             self.lm_head_ln_type = lm_head_ln_type
+            self.causal = causal
+            self.chunk_size = chunk_size
             self.local_attention = local_attention
             self.window_size = window_size
+            self.local_relpe = local_relpe
+            self.local_scheme = local_scheme
+            self.hybrid = hybrid
+            self.transformer_heads = transformer_heads
+            self.attn_proj_biases = attn_proj_biases
+
         else:
             raise ValueError(
                 "First argument must be either a vocabulary size (int)"

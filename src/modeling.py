@@ -2,7 +2,7 @@
 # https://github.com/NVIDIA/DeepLearningExamples/blob/master/PyTorch/LanguageModeling/BERT/modeling.py
 
 # coding=utf-8
-# Copyright 2024 Andrew Argatkiny
+# Copyright 2025 Andrew Argatkiny
 # Copyright 2018 The Google AI Language Team Authors and The HugginFace Inc. team.
 # Copyright (c) 2018, NVIDIA CORPORATION.  All rights reserved.
 #
@@ -37,7 +37,7 @@ from src.positional_embeddings import (
 
 from torch.nn.parameter import Parameter
 
-from src.danet_layers import DANetLayerWithLocalAttention, DANetLayer
+from src.danet_layers import DANetLayerWithLocalAttention, DANetLayer, TransformerLayer
 
 logger = logging.getLogger(__name__)
 
@@ -63,12 +63,12 @@ class RealNumberEmbedding(nn.Module):
         return emb
 
 
-class BertEmbeddings(nn.Module):
+class DANetEmbeddings(nn.Module):
     """Construct the embeddings from word, position and token_type embeddings.
     """
 
     def __init__(self, config: ModelConfig):
-        super(BertEmbeddings, self).__init__()
+        super(DANetEmbeddings, self).__init__()
         self.word_embeddings = nn.Embedding(config.vocab_size,
                                             config.hidden_size)
         #self.word_embeddings = RealNumberEmbedding(config)
@@ -93,7 +93,9 @@ class BertEmbeddings(nn.Module):
             self.add_tok_typ_emb_fn = lambda x, y: x
 
         # By default nn.Hardtanh
-        self.LayerNorm = Activation2Class[config.embedding_ln_type]()
+        self.LayerNorm = Activation2Class[config.embedding_ln_type](
+            hidden_size=config.hidden_size
+        )
         self.dropout = nn.Dropout(config.embedding_dropout)
 
     def add_learned_posit_embeddings(self, word_embeddings):
@@ -141,9 +143,9 @@ class BertEmbeddings(nn.Module):
         embeddings = self.LayerNorm(embeddings)
         return embeddings
 
-class BertEncoder(nn.Module):
+class DANetEncoder(nn.Module):
     def __init__(self, config: ModelConfig, args):
-        super(BertEncoder, self).__init__()
+        super(DANetEncoder, self).__init__()
         if (config.pos_emb_type == PositionalEmbeddingsTypes.RELPE and
                 config.relpe_type is not None):
             self.relpe_type = RelPEType[config.relpe_type.upper()]
@@ -161,10 +163,15 @@ class BertEncoder(nn.Module):
             config.hidden_size // config.num_attention_heads,
             num_heads=config.num_attention_heads
         )
+        self.local_scheme = config.local_scheme.split("_")
         layer_class = (DANetLayer if not config.local_attention
                        else DANetLayerWithLocalAttention)
-        layers = [layer_class(config, layer_number=n + 1)
+        layers = [layer_class(config, layer_number=n)
                   for n in range(config.num_hidden_layers)]
+        if config.hybrid:
+            for i in range(config.num_hidden_layers):
+                if 'softmax' in self.local_scheme[i % len(self.local_scheme)]:
+                    layers[i] = TransformerLayer(config, i)
         if args.scale_ffn_weights:
             for layer in layers:
                 layer.ffn.forward = layer.ffn.forward_scaled
@@ -265,10 +272,10 @@ class BertLMPredictionHead(nn.Module):
         self.decoder = nn.Linear(bert_model_embedding_weights.size(1),
                                  bert_model_embedding_weights.size(0),
                                  bias=False)
-        # self.decoder.weight = bert_model_embedding_weights
+        self.decoder.weight = bert_model_embedding_weights
         self.bias = nn.Parameter(
             torch.zeros(bert_model_embedding_weights.size(0)))
-        self.activation = nn.Hardtanh(-20, 2)
+        #self.activation = nn.Hardtanh(-20, 2)
 
     def forward(self, hidden_states, masked_token_indexes):
         hidden_states = self.transform(hidden_states)
@@ -277,13 +284,8 @@ class BertLMPredictionHead(nn.Module):
             hidden_states = torch.index_select(
                 hidden_states.view(-1, hidden_states.shape[-1]), 0,
                 masked_token_indexes)
-
-        torch.cuda.nvtx.range_push(
-            "decoder input.size() = {}, weight.size() = {}".format(
-                hidden_states.size(), self.decoder.weight.size()))
         hidden_states = self.decoder(hidden_states) + self.bias
-        torch.cuda.nvtx.range_pop()
-        return self.activation(hidden_states)
+        return hidden_states
 
 
 class BertOnlyMLMHead(nn.Module):
@@ -326,13 +328,13 @@ class BertPreTrainingHeads(nn.Module):
         return prediction_scores, seq_relationship_score
 
 
-class BertPreTrainedModel(nn.Module):
+class DANetPreTrainedModel(nn.Module):
     """ An abstract class to handle weights initialization and
         a simple interface for dowloading and loading pretrained models.
     """
 
     def __init__(self, config, *inputs, **kwargs):
-        super(BertPreTrainedModel, self).__init__()
+        super(DANetPreTrainedModel, self).__init__()
         if not isinstance(config, ModelConfig):
             raise ValueError(
                 "Parameter config in `{}(config)` should be an instance of class `ModelConfig`. "
@@ -399,8 +401,8 @@ class BertPreTrainedModel(nn.Module):
                 module.bias.data.zero_()
 
 
-class BertModel(BertPreTrainedModel):
-    """BERT model ("Bidirectional Embedding Representations from a Transformer").
+class DANetModel(DANetPreTrainedModel):
+    """DANet model ("Dense Attention Network").
 
     Params:
         config: a ModelConfig class instance with the configuration to build a new model
@@ -439,14 +441,14 @@ class BertModel(BertPreTrainedModel):
     config = modeling.ModelConfig(vocab_size_or_config_json_file=32000, hidden_size=768,
         num_hidden_layers=12, num_attention_heads=12, intermediate_size=3072)
 
-    model = modeling.BertModel(config=config)
+    model = modeling.DANetModel(config=config)
     all_encoder_layers, pooled_output = model(input_ids, token_type_ids, input_mask)
     ```
     """
 
     def __init__(self, config: ModelConfig, args=None):
-        super(BertModel, self).__init__(config)
-        self.embeddings = BertEmbeddings(config)
+        super(DANetModel, self).__init__(config)
+        self.embeddings = DANetEmbeddings(config)
         #self.posit_embs = MultiplicativePositionalEmbedding(config)
         # set pad_token_id that is used for sparse attention padding
         self.pad_token_id = config.pad_token_id if hasattr(
@@ -455,7 +457,7 @@ class BertModel(BertPreTrainedModel):
         self.sparse_attention_config = None  # get_sparse_attention_config(
         #     args, config.num_attention_heads)
         # self.sparse_attention_utils = get_sparse_attention_utils(self.sparse_attention_config)
-        self.encoder = BertEncoder(
+        self.encoder = DANetEncoder(
             config, args)
         self.pooler = BertPooler(config)
         self.apply(self.init_bert_weights)
@@ -468,8 +470,8 @@ class BertModel(BertPreTrainedModel):
                 attention_mask=None,
                 output_all_encoded_layers=False,
                 checkpoint_activations=False):
-        if attention_mask is None:
-            attention_mask = torch.ones_like(input_ids)
+        #if attention_mask is None:
+        #    attention_mask = torch.ones_like(input_ids)
         if token_type_ids is None:
             token_type_ids = torch.zeros_like(input_ids)
         """
@@ -489,7 +491,6 @@ class BertModel(BertPreTrainedModel):
             dtype=next(self.parameters()).dtype)  # fp16 compatibility
         extended_attention_mask = (1.0 - extended_attention_mask) * -10000.0
         """
-        # If BertEncoder uses sparse attention, it needs to be padded based on the sparse attention block size
         embedding_output = self.embeddings(input_ids,
                                            attention_mask,
                                            token_type_ids)
@@ -503,7 +504,6 @@ class BertModel(BertPreTrainedModel):
         sequence_output = encoded_layers[-1]
         pooled_output = self.pooler(sequence_output)
 
-        # If BertEncoder uses sparse attention, and input_ids were padded, sequence output needs to be unpadded to original length
         # if not output_all_encoded_layers:
         encoded_layers = encoded_layers[-1]
         return encoded_layers, pooled_output
@@ -534,10 +534,10 @@ class BertModel(BertPreTrainedModel):
         return encoded_layers, pooled_output
 
 
-class BertForPreTrainingNewAttention(BertPreTrainedModel):
-    """BERT model with pre-training heads.
-    This module comprises the BERT model followed by the two pre-training heads:
-        - the masked language modeling head, and
+class DANetForPreTraining(DANetPreTrainedModel):
+    """DANet model with pre-training heads.
+    This module comprises the DANet model followed by the two pre-training heads:
+        - the language modeling head, and
         - the next sentence classification head.
 
     Params:
@@ -554,7 +554,7 @@ class BertForPreTrainingNewAttention(BertPreTrainedModel):
             selected in [0, 1]. It's a mask to be used if the input sequence length is smaller than the max
             input sequence length in the current batch. It's the mask that we typically use for attention when
             a batch has varying length sentences.
-        `masked_lm_labels`: optional masked language modeling labels: torch.LongTensor of shape [batch_size, sequence_length]
+        `masked_lm_labels`: optional language modeling labels: torch.LongTensor of shape [batch_size, sequence_length]
             with indices selected in [-1, 0, ..., vocab_size]. All labels set to -1 are ignored (masked), the loss
             is only computed for the labels set in [0, ..., vocab_size]
         `label`: optional next sentence classification loss: torch.LongTensor of shape [batch_size]
@@ -586,8 +586,8 @@ class BertForPreTrainingNewAttention(BertPreTrainedModel):
     """
 
     def __init__(self, config: ModelConfig, args):
-        super(BertForPreTrainingNewAttention, self).__init__(config)
-        self.bert = BertModel(config, args)
+        super(DANetForPreTraining, self).__init__(config)
+        self.bert = DANetModel(config, args)
         self.num_labels = args.num_labels
         self.cls = BertPreTrainingHeads(
             config, self.bert.embeddings.word_embeddings.weight, num_labels=args.num_labels)
@@ -668,11 +668,13 @@ class BertForPreTrainingNewAttention(BertPreTrainedModel):
             return next_sentence_loss, seq_relationship_score
         return next_sentence_loss
 
-    def forward(self, input_ids, attention_mask, token_type_ids=None,
+    def forward(self, input_ids, attention_mask=None, token_type_ids=None,
                 masked_lm_labels=None, label=None, log=True):
         checkpoint_activations = False
         # pad_attention = attention_mask.numel() / attention_mask.sum()
         dtype = self.bert.embeddings.word_embeddings.weight.dtype
+        if attention_mask is None:
+            attention_mask = torch.ones_like(input_ids)
         extended_attention_mask = (
             attention_mask /
             attention_mask.sum(axis=-1, keepdim=True).pow(1. / 3)
@@ -765,7 +767,7 @@ class BertForPreTrainingNewAttention(BertPreTrainedModel):
         return total_loss
 
 
-class BertForMaskedLM(BertPreTrainedModel):
+class BertForMaskedLM(DANetPreTrainedModel):
     """BERT model with the masked language modeling head.
     This module comprises the BERT model followed by the masked language modeling head.
 
@@ -810,7 +812,7 @@ class BertForMaskedLM(BertPreTrainedModel):
 
     def __init__(self, config):
         super(BertForMaskedLM, self).__init__(config)
-        self.bert = BertModel(config)
+        self.bert = DANetModel(config)
         self.cls = BertOnlyMLMHead(config,
                                    self.bert.embeddings.word_embeddings.weight)
         self.apply(self.init_bert_weights)
@@ -837,7 +839,7 @@ class BertForMaskedLM(BertPreTrainedModel):
             return prediction_scores
 
 
-class BertForNextSentencePrediction(BertPreTrainedModel):
+class BertForNextSentencePrediction(DANetPreTrainedModel):
     """BERT model with next sentence prediction head.
     This module comprises the BERT model followed by the next sentence classification head.
 
@@ -883,7 +885,7 @@ class BertForNextSentencePrediction(BertPreTrainedModel):
 
     def __init__(self, config):
         super(BertForNextSentencePrediction, self).__init__(config)
-        self.bert = BertModel(config)
+        self.bert = DANetModel(config)
         self.cls = BertOnlyNSPHead(config)
         self.apply(self.init_bert_weights)
 
@@ -908,7 +910,7 @@ class BertForNextSentencePrediction(BertPreTrainedModel):
             return seq_relationship_score
 
 
-class BertForSequenceClassification(BertPreTrainedModel):
+class BertForSequenceClassification(DANetPreTrainedModel):
     """BERT model for classification.
     This module is composed of the BERT model with a linear layer on top of
     the pooled output.
@@ -958,7 +960,7 @@ class BertForSequenceClassification(BertPreTrainedModel):
         super(BertForSequenceClassification, self).__init__(config)
         self.num_labels = args.num_labels
         self.window_size = config.window_size
-        self.bert = BertModel(config, args)
+        self.bert = DANetModel(config, args)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.classifier = nn.Linear(config.hidden_size, self.num_labels,
                                     bias=config.classifier_bias)
@@ -969,6 +971,8 @@ class BertForSequenceClassification(BertPreTrainedModel):
         """
 
         self.apply(self.init_bert_weights)
+        if args.zero_init_pooler:
+            self.bert.pooler.dense_act.weight.data.zero_()
         self.use_local_attention = config.local_attention
 
     def forward(self,
@@ -1010,7 +1014,111 @@ class BertForSequenceClassification(BertPreTrainedModel):
         else:
             return logits
 
-class BertForAANMatching(BertPreTrainedModel):
+class BertForRegression(DANetPreTrainedModel):
+    """BERT model for classification.
+    This module is composed of the BERT model with a linear layer on top of
+    the pooled output.
+
+    Params:
+        `config`: a ModelConfig class instance with the configuration to build a new model.
+        `num_labels`: the number of classes for the classifier. Default = 2.
+
+    Inputs:
+        `input_ids`: a torch.LongTensor of shape [batch_size, sequence_length]
+            with the word token indices in the vocabulary(see the tokens preprocessing logic in the scripts
+            `extract_features.py`, `run_classifier.py` and `run_squad.py`)
+        `token_type_ids`: an optional torch.LongTensor of shape [batch_size, sequence_length] with the token
+            types indices selected in [0, 1]. Type 0 corresponds to a `sentence A` and type 1 corresponds to
+            a `sentence B` token (see BERT paper for more details).
+        `attention_mask`: an optional torch.LongTensor of shape [batch_size, sequence_length] with indices
+            selected in [0, 1]. It's a mask to be used if the input sequence length is smaller than the max
+            input sequence length in the current batch. It's the mask that we typically use for attention when
+            a batch has varying length sentences.
+        `labels`: labels for the classification output: torch.LongTensor of shape [batch_size]
+            with indices selected in [0, ..., num_labels].
+
+    Outputs:
+        if `labels` is not `None`:
+            Outputs the CrossEntropy classification loss of the output with the labels.
+        if `labels` is `None`:
+            Outputs the classification logits of shape [batch_size, num_labels].
+
+    Example usage:
+    ```python
+    # Already been converted into WordPiece token ids
+    input_ids = torch.LongTensor([[31, 51, 99], [15, 5, 0]])
+    input_mask = torch.LongTensor([[1, 1, 1], [1, 1, 0]])
+    token_type_ids = torch.LongTensor([[0, 0, 1], [0, 1, 0]])
+
+    config = ModelConfig(vocab_size_or_config_json_file=32000, hidden_size=768,
+        num_hidden_layers=12, num_attention_heads=12, intermediate_size=3072)
+
+    num_labels = 2
+
+    model = BertForSequenceClassification(config, num_labels)
+    logits = model(input_ids, token_type_ids, input_mask)
+    ```
+    """
+
+    def __init__(self, config, args):
+        super(BertForRegression, self).__init__(config)
+        self.num_labels = args.num_labels
+        self.window_size = config.window_size
+        self.bert = DANetModel(config, args)
+        self.dropout = nn.Dropout(config.hidden_dropout_prob)
+        self.regressor = nn.Linear(config.hidden_size, 1,
+                                    bias=config.classifier_bias)
+        """
+        self.cls = BertPreTrainingHeads(
+            config, self.bert.embeddings.word_embeddings.weight, num_labels=args.num_labels)
+        self.classifier = self.cls.seq_relationship
+        """
+
+        self.apply(self.init_bert_weights)
+        if args.zero_init_pooler:
+            self.bert.pooler.dense_act.weight.data.zero_()
+        self.use_local_attention = config.local_attention
+
+    def forward(self,
+                input_ids,
+                label=None,
+                attention_mask=None,
+                token_type_ids=None,
+                checkpoint_activations=False):
+        checkpoint_activations = False
+        dtype = self.bert.embeddings.word_embeddings.weight.dtype
+        if attention_mask is None:
+            attention_mask = torch.ones_like(input_ids)
+        extended_attention_mask = (
+            attention_mask /
+            attention_mask.sum(axis=-1, keepdim=True).pow(1. / 3)
+        ).to(dtype).unsqueeze(-1)
+        if self.use_local_attention:
+            local_attention_mask = (
+                    attention_mask / self.window_size ** (1. / 3)
+            ).to(dtype).unsqueeze(-1)
+            extended_attention_mask = (
+                local_attention_mask,
+                extended_attention_mask
+            )
+
+        _, pooled_output = self.bert(input_ids,
+                                     token_type_ids,
+                                     attention_mask=extended_attention_mask,
+                                     output_all_encoded_layers=False)
+        pooled_output = self.dropout(pooled_output)
+        logits = self.regressor(pooled_output)
+
+        if label is not None:
+            loss_fct = nn.MSELoss()
+            loss = loss_fct(logits.view(-1), label.to(logits.dtype).view(-1))
+            if not self.training:
+                return loss, logits
+            return loss
+        else:
+            return logits
+
+class BertForAANMatching(DANetPreTrainedModel):
     """BERT model for classification.
     This module is composed of the BERT model with a linear layer on top of
     the pooled output.
@@ -1060,7 +1168,7 @@ class BertForAANMatching(BertPreTrainedModel):
         super(BertForAANMatching, self).__init__(config)
         self.num_labels = args.num_labels
         self.window_size = config.window_size
-        self.bert = BertModel(config, args)
+        self.bert = DANetModel(config, args)
         self.dense = nn.Linear(config.hidden_size * 4, config.hidden_size, bias=False)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.activation = nn.GELU(approximate='tanh')
@@ -1124,7 +1232,7 @@ class BertForAANMatching(BertPreTrainedModel):
         else:
             return logits
 
-class BertForMultipleChoice(BertPreTrainedModel):
+class BertForMultipleChoice(DANetPreTrainedModel):
     """BERT model for multiple choice tasks.
     This module is composed of the BERT model with a linear layer on top of
     the pooled output.
@@ -1172,7 +1280,7 @@ class BertForMultipleChoice(BertPreTrainedModel):
     def __init__(self, config, num_choices):
         super(BertForMultipleChoice, self).__init__(config)
         self.num_choices = num_choices
-        self.bert = BertModel(config)
+        self.bert = DANetModel(config)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.classifier = nn.Linear(config.hidden_size, 1)
         self.apply(self.init_bert_weights)
@@ -1202,7 +1310,7 @@ class BertForMultipleChoice(BertPreTrainedModel):
             return reshaped_logits
 
 
-class BertForTokenClassification(BertPreTrainedModel):
+class BertForTokenClassification(DANetPreTrainedModel):
     """BERT model for token-level classification.
     This module is composed of the BERT model with a linear layer on top of
     the full hidden state of the last layer.
@@ -1251,7 +1359,7 @@ class BertForTokenClassification(BertPreTrainedModel):
     def __init__(self, config, num_labels):
         super(BertForTokenClassification, self).__init__(config)
         self.num_labels = num_labels
-        self.bert = BertModel(config)
+        self.bert = DANetModel(config)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.classifier = nn.Linear(config.hidden_size, num_labels)
         self.apply(self.init_bert_weights)
@@ -1285,7 +1393,7 @@ class BertForTokenClassification(BertPreTrainedModel):
             return logits
 
 
-class BertForQuestionAnswering(BertPreTrainedModel):
+class BertForQuestionAnswering(DANetPreTrainedModel):
     """BERT model for Question Answering (span extraction).
     This module is composed of the BERT model with a linear layer on top of
     the sequence output that computes start_logits and end_logits
@@ -1335,7 +1443,7 @@ class BertForQuestionAnswering(BertPreTrainedModel):
 
     def __init__(self, config):
         super(BertForQuestionAnswering, self).__init__(config)
-        self.bert = BertModel(config)
+        self.bert = DANetModel(config)
         # TODO check with Google if it's normal there is no dropout on the token classifier of SQuAD in the TF version
         # self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.qa_outputs = nn.Linear(config.hidden_size, 2)

@@ -3,6 +3,7 @@ from __future__ import division, absolute_import, print_function, unicode_litera
 import math
 
 import torch
+from torch.nn import functional as F
 from torch import nn
 
 
@@ -90,3 +91,66 @@ class ExpandedFFN(nn.Module):
         hidden_states = self.activation(hidden_states)
         hidden_states = torch.matmul(hidden_states, self.contracting_weight)
         return hidden_states
+
+class SwiGLU_old(nn.Module):
+    def __init__(self, config) -> None:
+        super().__init__()
+        hidden_size = config.hidden_size
+        expansion_factor = config.intermediate_size * hidden_size
+        n_hidden = int(2 * expansion_factor / 3)
+        n_hidden = self.find_multiple(n_hidden, 128)
+
+        self.c_fc1 = nn.Linear(hidden_size, n_hidden, bias=False)
+        self.c_fc2 = nn.Linear(hidden_size, n_hidden, bias=False)
+        self.c_proj = nn.Linear(n_hidden, hidden_size, bias=False)
+        self.expansion_dropout = nn.Dropout(config.hidden_dropout_prob)
+        self.contraction_dropout = nn.Dropout(config.hidden_dropout_prob)
+
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = F.silu(self.c_fc1(x)) * self.c_fc2(x)
+        x = self.expansion_dropout(x)
+        x = self.c_proj(x)
+        x = self.contraction_dropout(x)
+        return x
+
+    def adjust_norm_ratios(self):
+        pass
+
+    @staticmethod
+    def find_multiple(n: int, k: int) -> int:
+        if n % k == 0:
+            return n
+        return n + k - (n % k)
+
+class SwiGLU(nn.Module):
+    def __init__(self, config) -> None:
+        super().__init__()
+        hidden_size = config.hidden_size
+        expansion_factor = config.intermediate_size * hidden_size
+        n_hidden = int(2 * expansion_factor / 3)
+        self.n_hidden = self.find_multiple(n_hidden, 128)
+
+        self.c_up = nn.Linear(hidden_size, self.n_hidden * 2, bias=False)
+        #self.c_fc2 = nn.Linear(hidden_size, self.n_hidden, bias=False)
+        self.c_proj = nn.Linear(self.n_hidden, hidden_size, bias=False)
+        self.expansion_dropout = nn.Dropout(config.hidden_dropout_prob)
+        self.contraction_dropout = nn.Dropout(config.hidden_dropout_prob)
+
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.c_up(x)
+        x = F.silu(x[..., :self.n_hidden]) * x[..., self.n_hidden:]
+        x = self.expansion_dropout(x)
+        x = self.c_proj(x)
+        x = self.contraction_dropout(x)
+        return x
+
+    def adjust_norm_ratios(self):
+        pass
+
+    @staticmethod
+    def find_multiple(n: int, k: int) -> int:
+        if n % k == 0:
+            return n
+        return n + k - (n % k)

@@ -76,37 +76,72 @@ class RoPE(RelPEBase):
         seq_idx = torch.arange(seq_len)
 
         # Calculate the product of position index and $\theta_i$
-        idx_theta = torch.outer(seq_idx, theta).float()
+        angles = torch.outer(seq_idx, theta).repeat(1, 2).float()
 
-        cache = torch.stack([torch.cos(idx_theta), torch.sin(idx_theta)], dim=-1)
+        cache_cos = torch.cos(angles).unsqueeze(0)
+        cache_sin = torch.sin(angles).unsqueeze(0)
+        if num_heads is None:
+            cache_cos = cache_cos.unsqueeze(1)
+            cache_sin = cache_sin.unsqueeze(1)
+            # cache: bs (1), headdim (1), seqlen, embed dim
+        else:
+            cache_cos = cache_cos.repeat(1, 1, num_heads)
+            cache_sin = cache_sin.repeat(1, 1, num_heads)
+            # cache: bs (1), seqlen, embed dim * num heads
+        self.register_buffer("cache_cos", cache_cos, persistent=False)
+        self.register_buffer("cache_sin", cache_sin, persistent=False)
 
-        self.register_buffer("rel_pos_emb", cache, persistent=False)
+    @staticmethod
+    def rotate_half(x):
+        """Rotates half the hidden dims of the input.
+        From https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py#L84
+        """
+        x1 = x[..., : x.shape[-1] // 2]
+        x2 = x[..., x.shape[-1] // 2:]
+        return torch.cat((-x2, x1), dim=-1)
 
     def apply_relpe(self, x: torch.Tensor) -> torch.Tensor:
         # truncate to support variable sizes
-        T = x.size(1)
-        rope_cache = self.rel_pos_emb[:T]
-
-        # cast because the reference does
-        xshaped = x.float().reshape(*x.shape[:-1], -1, 2)
-        # xshaped = x.reshape(*x.shape[:-1], -1, 2)
-        rope_cache = rope_cache.view(1, xshaped.size(1), 1, xshaped.size(3), 2)
-        x_out2 = torch.stack(
-            [
-                xshaped[..., 0] * rope_cache[..., 0] - xshaped[..., 1] * rope_cache[..., 1],
-                xshaped[..., 1] * rope_cache[..., 0] + xshaped[..., 0] * rope_cache[..., 1],
-            ],
-            -1,
-        )
-
-        x_out2 = x_out2.flatten(3)
-        return x_out2.type_as(x)
+        seq_len = x.size(-2)
+        cache_cos = self.cache_cos[..., :seq_len, :]
+        cache_sin = self.cache_sin[..., :seq_len, :]
+        pdtype = x.dtype
+        # First half of the tensor [x1, x2] takes form x1 * cos - x2 * sin
+        # Second half is x1 * cos + x2 * sin
+        x = x * cache_cos + self.rotate_half(x) * cache_sin
+        return x.to(pdtype)
 
     def apply_local_relpe(self, x: torch.Tensor, window_size, num_windows):
-        raise NotImplementedError
+        """Applies RoPE in a way that treats local attention windows as
+        independent sequences. It's assumed that input `x` is of form
+        (bs, num_windows * window_size, num_heads * head_dim) or
+        (bs, num_heads, num_windows * window_size, head_dim), depending on init."""
+        cache_cos = self.cache_cos[..., :window_size, :].repeat(1, num_windows, 1)
+        cache_sin = self.cache_sin[..., :window_size, :].repeat(1, num_windows, 1)
+        pdtype = x.dtype
+        # First half of the tensor [x1, x2] takes form x1 * cos - x2 * sin
+        # Second half is x1 * cos + x2 * sin
+        x = x * cache_cos + self.rotate_half(x) * cache_sin
+        return x.to(pdtype)
 
+    def apply_local_relpe2(self, x: torch.Tensor, window_size, num_windows):
+        """Applies RoPE in a way that treats local attention windows as
+        independent sequences. It's assumed that input `x` is of form
+        (bs, num_windows, num_heads, window_size, head_dim) and RoPE cache is
+        (bs (1), num_heads (1), seqlen, head_dim) """
+        cache_cos = self.cache_cos.unsqueeze(0)[..., :window_size, :]
+        cache_sin = self.cache_sin.unsqueeze(0)[..., :window_size, :]
+        pdtype = x.dtype
+        # First half of the tensor [x1, x2] takes form x1 * cos - x2 * sin
+        # Second half is x1 * cos + x2 * sin
+        x = x * cache_cos + self.rotate_half(x) * cache_sin
+        return x.to(pdtype)
 
 class TrigRelPEBase(RelPEBase):
+    """Use num_heads=None if you intend to apply RelPE to tensors which
+    already have material head dimension. If all heads are implicitly
+    stored in one dimension or there's only one head, put their number, and
+    the algorithm will repeat n_elem to cover the whole dimension."""
     def __init__(self, seq_len: int, n_elem: int,
                  base: int = 10000, num_heads=None):
         super(TrigRelPEBase, self).__init__()
@@ -114,8 +149,8 @@ class TrigRelPEBase(RelPEBase):
         angles: torch.Tensor = torch.outer(torch.arange(seq_len), theta)
         cache = self.trig_transform(angles).unsqueeze(0)
         if num_heads is None:
-            cache = cache.unsqueeze(-2)
-            # cache: bs (1), seqlen, headdim (1), embed dim
+            cache = cache.unsqueeze(1)
+            # cache: bs (1), headdim (1), seqlen, embed dim
         else:
             cache = cache.repeat(1, 1, num_heads)
             # cache: bs (1), seqlen, embed dim * num heads
@@ -129,8 +164,17 @@ class TrigRelPEBase(RelPEBase):
         return x * self.rel_pos_emb
 
     def apply_local_relpe(self, x: torch.Tensor, window_size, num_windows):
-        return x * self.rel_pos_emb[:, :window_size, ...].repeat(1, num_windows, 1)
+        """Applies RelPE in a way that treats local attention windows as
+        independent sequences. It's assumed that input `x` is of form
+        (bs, num_windows * window_size, num_heads * head_dim) or
+        (bs, num_heads, num_windows * window_size, head_dim), depending on init."""
+        return x * self.rel_pos_emb[..., :window_size, :].repeat(1, num_windows, 1)
 
+    def apply_local_relpe2(self, x: torch.Tensor, window_size, num_windows):
+        """Applies RelPE in a way that treats local attention windows as
+        independent sequences. It's assumed that input `x` is of form
+        (bs, num_windows, num_heads, window_size, head_dim)"""
+        return x * self.rel_pos_emb.unsqueeze(0)[..., :window_size, :]
 
 class CosRelPE(TrigRelPEBase):
     @staticmethod

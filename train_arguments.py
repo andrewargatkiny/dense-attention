@@ -10,7 +10,28 @@ def get_argument_parser():
         "--cf",
         type=str,
         required=True,
-        help="pointer to the configuration file of the experiment",
+        help="pointer to the main configuration file of the experiment",
+    )
+    parser.add_argument(
+        "--model_config_file",
+        default="",
+        type=str,
+        help="Path to optional model config. If set, overrides `model_config` "
+             "section of the main config."
+    )
+    parser.add_argument(
+        "--data_config_file",
+        default="",
+        type=str,
+        help="Path to optional data config. If set, overrides `data` "
+             "section of the main config."
+    )
+    parser.add_argument(
+        "--train_config_file",
+        default="",
+        type=str,
+        help="Path to optional training config. If set, overrides `training` "
+             "section of the main config."
     )
     parser.add_argument(
         "--output_dir",
@@ -28,6 +49,12 @@ def get_argument_parser():
              "be used."
     )
     parser.add_argument(
+        "--eval_only",
+        default=False,
+        action="store_true",
+        help="Only evaluate the model without training"
+    )
+    parser.add_argument(
         "--only_mlm_task",
         default=False,
         action="store_true",
@@ -43,7 +70,20 @@ def get_argument_parser():
              "Models weights for MLM task are still preserved and can be used "
              "in successive runs."
     )
-
+    parser.add_argument(
+        "--no_decay_embeddings",
+        default=False,
+        action="store_true",
+        help="If True, don't apply weight decay to embeddings even if it's not"
+             " 0 in general."
+    )
+    parser.add_argument(
+        "--no_decay_pooler",
+        default=False,
+        action="store_true",
+        help="If True, don't apply weight decay to pooler even if it's not"
+             " 0 in general."
+    )
     parser.add_argument(
         "--scale_ffn_weights",
         default=False,
@@ -137,10 +177,10 @@ def get_argument_parser():
         'Maximum number of training steps of effective batch size within an epoch to complete.'
     )
     parser.add_argument(
-        '--print_steps',
+        '--log_diagnostic_freq',
         type=int,
         default=100,
-        help='Interval in epochs to print training details.'
+        help='Interval in epochs to log model weights and, possibly, activations.'
     )
     parser.add_argument(
         '--data_path_prefix',
@@ -210,7 +250,7 @@ def get_argument_parser():
         '--dense_attention',
         default=False,
         action='store_true',
-        help="Whether to use my custom transformer block"
+        help="Currently affects how params are grouped in the optimizer."
     )
     parser.add_argument(
     '--resize_posit_embeds',
@@ -239,11 +279,10 @@ def get_argument_parser():
         "calculating forward pass to log model's activations."
     )
     parser.add_argument(
-        '--log_problematic_weights',
+        '--log_activations',
         default=False,
         action='store_true',
-        help='Log weight distribution for each parameter of the model if nans '
-             'or infs are encountered'
+        help='Log activation distributions for each parameter of the model every .'
     )
     parser.add_argument(
         '--unpad_inputs',
@@ -301,5 +340,16 @@ def get_argument_parser():
              "modeling datasets which should be equal to number of vocab's "
              "entries."
     )
-
+    parser.add_argument(
+        '--zero_init_pooler',
+        default=False,
+        action='store_true',
+        help='Reinitialize pooler weights to all 0s before training.'
+    )
+    parser.add_argument(
+        '--dict_backend',
+        type=str,
+        default="nccl",
+        help='Backend for distributed training.'
+    )
     return parser

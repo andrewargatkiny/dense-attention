@@ -1,3 +1,5 @@
+#!/bin/bash
+
 base_dir=`pwd`
 : "${BASE_DATA_DIR:=${base_dir}/data}"
 

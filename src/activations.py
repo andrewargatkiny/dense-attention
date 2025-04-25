@@ -17,6 +17,32 @@ class MaxNormActivation(nn.Module):
         hidden_states = hidden_states / (hidden_states.abs().max(axis=-1, keepdim=True)[0] + self.eps)
         return hidden_states
 
+class ScaledMaxNorm(MaxNormActivation):
+    """Activation that divides the input embeddings by their max norm and then
+    element-wise multiplies them by weight vector like in RMS norm."""
+
+    def __init__(self, hidden_size, eps=1e-12):
+        super(ScaledMaxNorm, self).__init__(hidden_size, eps)
+        self.weight = nn.Parameter(torch.ones(hidden_size))
+
+    def forward(self, x):
+        pdtype = x.dtype
+        x = x.float()
+        x = x / (x.abs().max(axis=-1, keepdim=True)[0] + self.eps)
+        return self.weight * x.to(pdtype)
+
+class PreScaledMaxNorm(ScaledMaxNorm):
+    """Activation that element-wise multiplies the input embeddings by weight
+    vector and then divides them by their max norm."""
+
+    def forward(self, x):
+        x = self.weight * x
+        pdtype = x.dtype
+        x = x.float()
+        x = x / (x.abs().max(axis=-1, keepdim=True)[0] + self.eps)
+        return x.to(pdtype)
+
+
 
 class UncenteredLayerNorm(nn.Module):
     def __init__(self, hidden_size, eps=1e-12, init_mean=1.0):
@@ -61,7 +87,7 @@ class StandardLayerNorm(nn.Module):
         #self.bias = nn.Parameter(torch.zeros(hidden_size))
         self.variance_epsilon = eps
 
-    def forward(self, x, pad_adjust=1.):
+    def forward(self, x):
         pdtype = x.dtype
         x = x.float()
         u = x.mean(-1, keepdim=True)
@@ -103,6 +129,8 @@ def validate_init_args(cls_type):
 
 Activation2Class = {
     "max_norm": MaxNormActivation,
+    "scaled_max_norm": ScaledMaxNorm,
+    "prescaled_max_norm": PreScaledMaxNorm,
     "uncentered_ln": UncenteredLayerNorm,
     "uncentered_fixed_ln": UncenteredFixedLayerNorm,
     "standard_ln": StandardLayerNorm,

@@ -14,13 +14,13 @@ from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm
 
 from src.model_config import ModelConfig
-from src.tasks import TaskRegistry
+from utils.tasks import TaskRegistry
 from train_arguments import get_argument_parser
-from turing.logger import Logger
-from pytorch_pretrained_bert.optimization import warmup_exp_decay_exp, cosine_poly_warmup_decay
-from utils import is_time_to_exit, master_process, TensorBoardWriter
+from utils.logger import Logger
+from utils.optimization import warmup_exp_decay_exp, cosine_poly_warmup_decay
+from train_utils import is_time_to_exit, master_process, TensorBoardWriter
 
-from dataset_utils import ShardedDatasetWrapper, create_dataloader
+from data.dataset_utils import ShardedDatasetWrapper, create_dataloader
 
 from clearml import Task
 import deepspeed
@@ -98,7 +98,8 @@ def get_dataloader(args, dataset: Dataset):
             DataLoader(dataset,
                        batch_size=args.eval_bs,
                        sampler=train_sampler,
-                       num_workers=args.config['training']['num_workers']))
+                       num_workers=args.config['training']['num_workers'],
+                       drop_last=args.eval_only))
 
 
 def pretrain_validation(args, dataset, series_name, index, model):
@@ -110,6 +111,7 @@ def pretrain_validation(args, dataset, series_name, index, model):
     max_validation_samples = args.max_validation_samples
     if max_validation_samples == -1:
         max_validation_samples= len(dataset)
+        logger.info(f"length of dataset is {len(dataset)}")
     args.eval_bs = eval_bs
     logger.info(
         f"Validation micro batch size: {eval_bs}")
@@ -178,7 +180,7 @@ def train(args,
 
     for group in optimizer.param_groups:
         group['lr'] = lr_this_step
-        #if group['name'] != 'others_with_no_wd': group['weight_decay'] = args.config["training"]["weight_decay"]
+        if group['name'] != 'others_with_no_wd': group['weight_decay'] = args.config["training"]["weight_decay"]
 
     for _, batch in enumerate(tqdm(dataset_iterator, smoothing=1)):
         try:
@@ -203,7 +205,7 @@ def train(args,
             if not np.isfinite(unscaled_loss):
                 report_model_activations(args, model,
                                          batch, global_step)
-                if args.log_problematic_weights:
+                if args.log_activations:
                     report_model_weights(args, model, global_step)
             '''
 
@@ -231,7 +233,7 @@ def train(args,
                     # refresh_fp32_params(optimizer)
                     # For bf16 training
                     # optimizer._restore_from_bit16_weights()
-                if epoch_step == 0 and index % args.print_steps == 0:
+                if epoch_step == 0 and index % args.log_diagnostic_freq == 0:
                     for name, param in model.named_parameters():
                         if param.grad is not None: print(f"Grad Extremums", name, param.grad.min(), param.grad.max())
                     for tensor, state in inner_optimizer.state.items():
@@ -241,8 +243,9 @@ def train(args,
                     logger.info(
                         f"Logging model weights and activations distribution "
                         f"at the start of of epoch: {index}, step: {epoch_step}")
-                    report_model_activations(args, model,
-                                             batch, global_step)
+                    if args.log_activations:
+                        report_model_activations(args, model,
+                                                 batch, global_step)
                     report_model_weights(args, model, global_step)
                 # for name, param in model.named_parameters():
                 #     if param.grad is not None: print(f"Parameter Extremums", name, param.grad.min(), param.grad.max())
@@ -304,12 +307,6 @@ def train(args,
 
     global_data_samples = current_data_sample_count
 
-    if  args.eval_train_data and args.train_dataset is not None:
-            pretrain_validation(args, args.train_dataset, "Train", index, model)
-    if not args.no_eval_val_data:
-        pretrain_validation(args, args.eval_dataset, "Validation", index, model)
-    if args.eval_test_data:
-        pretrain_validation(args, args.test_dataset, "Test", index, model)
 
 def update_weights_scalers(model, num_layers):
     """Update weights scalers of DenseAttention Model"""
@@ -341,6 +338,8 @@ def update_learning_rate(args, config, current_global_step, optimizer):
         lr_this_step = config["training"]["learning_rate"]
     else:
         lr_this_step = config["training"]["learning_rate"]
+
+    lr_this_step += config["training"]["lr_offset"]
 
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr_this_step
@@ -444,6 +443,8 @@ def report_model_activations(args, model, data, step, bins=20, **kwargs):
                     activations[name] = output.cpu().float().numpy()
             return hook
         hooks = []
+        if args.use_torch_compile:
+            model = model._orig_mod
         for name, module in model.named_modules():
             hooks.append(
                 module.register_forward_hook(getActivation(name))
@@ -548,6 +549,21 @@ def construct_arguments():
     args.logger = logger
     config = json.load(open(args.config_file, 'r', encoding='utf-8'))
     args.config = config
+    if args.model_config_file and args.model_config_file != args.config_file:
+        model_config = json.load(
+            open(args.model_config_file, 'r', encoding='utf-8')
+        )
+        args.config["model_config"] = model_config["model_config"]
+    if args.data_config_file and args.data_config_file != args.config_file:
+        data_config = json.load(
+            open(args.data_config_file, 'r', encoding='utf-8')
+        )
+        args.config["data"] = data_config["data"]
+    if args.train_config_file and args.train_config_file != args.config_file:
+        train_config = json.load(
+            open(args.train_config_file, 'r', encoding='utf-8')
+        )
+        args.config["training"] = train_config["training"]
     args.task = TaskRegistry.get_task(args.task_type)
 
     args.job_name = config['name'] if args.job_name is None else args.job_name
@@ -582,10 +598,15 @@ def prepare_optimizer_parameters(args, model):
     config = args.config
     deepspeed_config = json.load(
         open(args.deepspeed_config, 'r', encoding='utf-8'))
-    param_optimizer = list(model.named_parameters())
-    param_optimizer = [n for n in param_optimizer if #'pooler' not in n[0] and
-                       'embeddings' not in n[0] and 'layer' not in n[0]]
-    no_decay = ['bias', 'LayerNorm.bias', 'LayerNorm.weight']
+    params_to_optimize = list(model.named_parameters())
+    #params_to_optimize = [n for n in params_to_optimize if #'pooler' not in n[0] and
+    #                   'embeddings' not in n[0] and 'layer' not in n[0]]
+    no_decay_list = ['bias', 'LayerNorm.bias', 'LayerNorm.weight',
+                     'activation.weight', 'layer_norm.weight']
+    if args.no_decay_embeddings:
+        no_decay_list += ['embeddings']
+    if args.no_decay_pooler:
+        no_decay_list += ['pooler']
     if "weight_decay" in config["training"].keys():
         weight_decay = config["training"]["weight_decay"]
     else:
@@ -598,6 +619,8 @@ def prepare_optimizer_parameters(args, model):
                'name': 'embeddings'}]
     for i in range(len(model.bert.encoder.layer)):
         if args.dense_attention:
+            # If some kind of layer norm in attention layer has learnable
+            # params, they wouldn't be updated.
             groups.append({
                 'params': list(model.bert.encoder.layer[i].attention.parameters()),
                 'lr': 0.0,
@@ -622,30 +645,33 @@ def prepare_optimizer_parameters(args, model):
 
     optimizer_grouped_parameters = [{
         'params': [
-            p for n, p in param_optimizer
-            if not any(nd in n for nd in no_decay)
+            p for n, p in params_to_optimize
+            if not any(stop_word in n for stop_word in no_decay_list)
         ],
         'lr': 0.0,
         'weight_decay': weight_decay,
         'name': 'others_with_wd'
     }, {
         'params':
-        [p for n, p in param_optimizer if any(nd in n for nd in no_decay)],
+        [p for n, p in params_to_optimize
+         if any(stop_word in n for stop_word in no_decay_list)],
         'lr': 0.0,
         'weight_decay': 0.0,
         'name': 'others_with_no_wd'
     }]
-    optimizer_grouped_parameters.extend(groups)
+    #optimizer_grouped_parameters.extend(groups)
 
     return optimizer_grouped_parameters
 
 
 def prepare_model_optimizer(args):
     # Initialize torch distributed
-    deepspeed.init_distributed(dist_backend='nccl')
+    deepspeed.init_distributed(dist_backend=args.dict_backend)
     args.local_rank = int(os.environ['LOCAL_RANK'])
     model_class = args.task.model_type
     config_class = ModelConfig
+    if hasattr(args.task, "config_type"):
+        config_class = args.task.config_type
 
 
     bert_config = config_class(**args.config["model_config"])
@@ -686,6 +712,7 @@ def prepare_model_optimizer(args):
                      deepspeed.runtime.config.ONEBIT_LAMB_OPTIMIZER)
 
     if args.use_torch_compile:
+        torch.compiler.reset()
         model = torch.compile(model)
     print(model)
     return model, optimizer
@@ -717,6 +744,14 @@ def load_checkpoint(args, model):
         last_global_step_from_restore = global_step
 
     return start_epoch
+
+def evaluate_model(args, index, model):
+    if args.eval_train_data and args.train_dataset is not None:
+        pretrain_validation(args, args.train_dataset, "Train", index, model)
+    if not args.no_eval_val_data:
+        pretrain_validation(args, args.eval_dataset, "Validation", index, model)
+    if args.eval_test_data:
+        pretrain_validation(args, args.test_dataset, "Test", index, model)
 
 def run(args, model, optimizer, start_epoch):
     global global_step
@@ -763,6 +798,18 @@ def run(args, model, optimizer, start_epoch):
     #backward_hooks = report_model_gradients(args, model)
     #forward_hooks = report_activations_fast(args, model)
 
+    if args.eval_only:
+        max_samples = args.max_validation_samples
+        eval_bs = args.train_micro_batch_size_per_gpu * args.eval_bs_ratio
+        # Dry run to compile the model
+        dry_run_n_samples = eval_bs * 4
+        args.max_validation_samples = dry_run_n_samples
+        evaluate_model(args, -1, model)
+        # Full run for measuring speed and quality
+        args.max_validation_samples = max_samples
+        evaluate_model(args, 0, model)
+        return
+
     for index in range(start_epoch, config["training"]["num_epochs"]):
         logger.info(f"Training Epoch: {index + 1}")
         pre = time.time()
@@ -770,17 +817,25 @@ def run(args, model, optimizer, start_epoch):
         #report_model_weights(args, model, global_step)
         # Save ckpts according to "--ckpt_to_save" option,
         # e.g. "--ckpt_to_save 160 161" to save epoch 160 and 161.
-        if index % args.ckpt_to_save == 0:
+        evaluate_model(args, index, model)
+        if args.ckpt_to_save > 0 and index % args.ckpt_to_save == 0:
             logger.info(
                 f"Saving a checkpointing of the model for epoch: {index+1}")
 
-            checkpoint_model(PATH=args.saved_model_path,
-                             ckpt_id='epoch{}_step{}'.format(
-                                 index + 1, global_step),
-                             model=model,
-                             epoch=index + 1,
-                             last_global_step=global_step,
-                             last_global_data_samples=global_data_samples)
+            success = False
+            while not success:
+                try:
+                    checkpoint_model(
+                        PATH=args.saved_model_path,
+                        ckpt_id='epoch{}_step{}'.format(index + 1, global_step),
+                        model=model, epoch=index + 1,
+                        last_global_step=global_step,
+                        last_global_data_samples=global_data_samples
+                    )
+                    success = True
+                except Exception as ex:
+                    print(ex)
+                    
 
         post = time.time()
         logger.info(f"Time for shard {index + 1}: {post-pre} seconds")

@@ -47,8 +47,8 @@ NCCL_TREE_THRESHOLD=0 deepspeed ${base_dir}/deepspeed_train.py \
 --output_dir $OUTPUT_DIR \
 --deepspeed \
 --dense_attention \
---print_steps 5 \
---log_problematic_weights \
+--log_diagnostic_freq 5 \
+--log_activations \
 --seed 200 \
 --job_name $JOB_NAME \
 --deepspeed_config ${base_dir}/configs/lra/deepspeed_config_pathfinder_rel_emb.json \

@@ -1,4 +1,5 @@
 numpy
+scipy
 datasets
 pandas
 tqdm
@@ -7,6 +8,11 @@ torch
 requests
 h5py
 transformers
+datasets
 deepspeed
 clearml
 tensorboardX
+zstandard
+nltk
+tensorboardX==2.6.1
+clearml
