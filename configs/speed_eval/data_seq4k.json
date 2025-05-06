@@ -1,0 +1,19 @@
+{
+    "data": {
+        "training": {
+            "input_file": "sentence_512/c4_en/c4-train.00100-of-01024.json.gz",
+            "max_seq_length": 4096,
+            "total_samples": 16384
+        },
+        "validation": {
+            "input_file": "sentence_512/c4_en/c4-train.00101-of-01024.json.gz",
+            "max_seq_length": 4096,
+            "total_samples": 16384
+        },
+        "test": {
+            "input_file": "sentence_512/c4_en/c4-train.00102-of-01024.json.gz",
+            "max_seq_length": 4096,
+            "total_samples": 16384
+        }
+    }
+}

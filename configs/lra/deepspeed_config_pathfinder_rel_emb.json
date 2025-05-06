@@ -1,0 +1,37 @@
+{
+  "train_batch_size": 4000,
+  "train_micro_batch_size_per_gpu": 100,
+  "steps_per_print": 100,
+  "prescale_gradients": false,
+  "optimizer": {
+    "type": "Adam",
+    "params": {
+      "lr": 4e-4,
+      "betas": [
+        0.9,
+        0.9
+      ],
+      "eps": 1e-16,
+      "weight_decay": 0.01,
+      "bias_correction": true,
+      "adam_w_mode": true
+    }
+  },
+
+  "wall_clock_breakdown": false,
+
+  "fp16": {
+    "enabled": true,
+    "loss_scale": 0.0,
+    "initial_scale_power": 16,
+    "loss_scale_window": 20
+
+  },
+  "bf16": {
+    "enabled": false
+  },
+   "amp": {
+    "enabled": false,
+    "loss_scale": "dynamic"
+  }
+}

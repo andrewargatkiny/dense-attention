@@ -1,0 +1,62 @@
+{
+    "name": "dense_attention_bert",
+    "model_config": {
+        "vocab_size_or_config_json_file": 30528,
+        "hidden_size": 1024,
+        "num_hidden_layers": 32,
+        "num_attention_heads": 1,
+        "intermediate_size": 4,
+        "hidden_dropout_prob": 0,
+        "attention_complexity": "quadratic",
+        "attention_probs_dropout_prob": 0,
+        "embedding_ln_type": "max_norm",
+        "embedding_dropout": 0,
+        "max_position_embeddings": 512,
+        "token_type_embeddings": false,
+        "type_vocab_size": 2,
+        "initializer_range": 0.02,
+        "pos_emb_type": "relpe",
+        "relpe_type": "rope",
+        "relpe_scheme": "q,k",
+        "final_ln_type": "max_norm",
+        "pooler_no_dense": false,
+        "pooler_function": "first",
+        "pooler_act": "tanh",
+        "classifier_bias": true,
+        "lm_head_act": "gelu",
+        "lm_head_ln_type": "standard_ln",
+        "local_attention": true,
+        "window_size": 32
+    },
+    "data": {
+        "training": {
+            "input_files_path": "sentence_512/c4_en",
+            "max_seq_length": 128,
+            "total_samples": 1048576
+        },
+        "validation": {
+            "input_file": "sentence_512/validation_data/part_000.txt",
+            "max_seq_length": 128,
+            "total_samples": 61072
+        },
+        "test": {
+            "input_file": "sentence_512/validation_data/c4-validation.00000-of-00008.json.gz",
+            "max_seq_length": 128,
+            "total_samples": 160000
+        }
+    },
+    "training": {
+        "num_epochs": 1600,
+        "lr_scheduler_params": {
+            "warmup_ratio": 0.02,
+            "warmup_degree": 1,
+            "degree": 1,
+            "one_cycle_steps": 140000
+        },
+        "lr_schedule": "cosine",
+        "lr_offset": 5e-5,
+        "learning_rate": 4.5e-4,
+        "weight_decay": 0.1,
+        "num_workers": 4
+    }
+}

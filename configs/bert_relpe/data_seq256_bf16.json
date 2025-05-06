@@ -1,0 +1,19 @@
+{
+    "data": {
+        "training": {
+            "input_files_path": "sentence_512/c4_en",
+            "max_seq_length": 256,
+            "total_samples": 524288
+        },
+        "validation": {
+            "input_file": "sentence_512/validation_data/part_000.txt",
+            "max_seq_length": 256,
+            "total_samples": 28160
+        },
+        "test": {
+            "input_file": "sentence_512/validation_data/c4-validation.00000-of-00008.json.gz",
+            "max_seq_length": 256,
+            "total_samples": 80000
+        }
+    }
+}

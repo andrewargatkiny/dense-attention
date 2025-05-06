@@ -1,0 +1,52 @@
+{
+    "name": "dense_attention_bert",
+    "model_config": {
+        "vocab_size_or_config_json_file": 50304,
+        "hidden_size": 1024,
+        "num_hidden_layers": 24,
+        "num_attention_heads": 16,
+        "intermediate_size": 4096,
+        "hidden_dropout_prob": 0,
+        "hidden_act": "swiglu",
+        "attention_kernel": "softmax",
+        "attention_probs_dropout_prob": 0,
+        "embedding_dropout": 0,
+        "max_position_embeddings": 2048,
+        "token_type_embeddings": false,
+        "type_vocab_size": 2,
+        "initializer_range": 0.02,
+        "pos_emb_type": "relpe",
+        "relpe_type": "rope",
+        "causal": true,
+        "local_attention": false
+
+    },
+    "data": {
+        "training": {
+            "input_files_path": "pile/pile_2048_hdf5",
+            "total_samples": 524288
+        },
+        "validation": {
+            "input_file": "pile/val.jsonl.hdf5",
+            "total_samples": 187104
+        },
+        "test": {
+            "input_file": "pile/test.jsonl.hdf5",
+            "total_samples": 182208
+        }
+    },
+    "training": {
+        "num_epochs": 10,
+        "lr_scheduler_params": {
+            "warmup_ratio": 0.015,
+            "warmup_degree": 1,
+            "degree": 1,
+            "one_cycle_steps": 40960
+        },
+        "lr_schedule": "cosine",
+        "lr_offset": 0.00008,
+        "learning_rate": 7.2e-4,
+        "weight_decay": 0.1,
+        "num_workers": 4
+    }
+}

@@ -1,0 +1,54 @@
+{
+    "name": "lra-experiment",
+    "model_config": {
+        "vocab_size_or_config_json_file": 256,
+        "hidden_size": 128,
+        "num_hidden_layers": 6,
+        "num_attention_heads": 8,
+        "intermediate_size": 1,
+        "hidden_act": "gelu",
+        "hidden_dropout_prob": 0.05,
+        "attention_probs_dropout_prob": 0.00,
+        "embedding_dropout": 0.00,
+        "max_position_embeddings": 16384,
+        "type_vocab_size": 2,
+        "initializer_range": 0.2,
+        "pos_emb_type": "relpe",
+        "relpe_type": "cosine",
+        "pooler_function": "first",
+        "local_attention": true,
+        "window_size": 1024
+    },
+    "data": {
+        "training": {
+            "inputs": "input/train.src",
+            "labels": "label/train.label"
+        },
+        "validation": {
+            "inputs": "input/valid.src",
+            "labels": "label/valid.label"
+        },
+        "test": {
+            "inputs": "input/test.src",
+            "labels": "label/test.label"
+        }
+    },
+    "training": {
+        "num_epochs": 1600,
+        "lr_scheduler_params": {
+            "warmup_ratio": 0.1,
+            "warmup_degree": 1,
+            "degree": 0,
+            "one_cycle_steps": 8000
+        },
+        "lr_schedule": "constant",
+        "lr_offset": 0.0,
+        "learning_rate": 5e-3,
+        "weight_decay": 0.1,
+        "num_workers": 4,
+        "async_worker": true,
+        "decay_rate": 0.90,
+        "decay_step": 150
+
+    }
+}
