@@ -360,7 +360,7 @@ def get_argument_parser():
     parser.add_argument(
         '--dict_backend',
         type=str,
-        default="gloo",
+        default="nccl",
         help='Backend for distributed training.'
     )
     return parser
