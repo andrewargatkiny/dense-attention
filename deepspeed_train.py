@@ -6,12 +6,15 @@ import logging
 import numpy as np
 import random
 import json
+import re
 import torch
 import torch.distributed as dist
 from torch.utils.data import DataLoader, Dataset
 from torch.utils.data.sampler import RandomSampler
 from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm
+
+from collections import defaultdict
 
 from src.model_config import ModelConfig
 from utils.tasks import TaskRegistry
@@ -496,8 +499,28 @@ def report_model_activations(args, model, data, step, bins=20, **kwargs):
 
 def report_model_weights(args, model, step, bins=20):
     if master_process(args):
+        norm_types = {"L1": 1, "L2": 2, "Linf": float('inf')}
+        if args.log_weight_norms and not args.log_norm in norm_types:
+            raise ValueError("args.log_norm value is invalid. Please set it to L1, L2, or Linf.")
+
+        def get_group(name):
+            group_name = name
+            layer = re.search(r'\.layer\.\d+\.', name)
+            if layer:
+                layer = layer.group(0)
+                group_name = group_name.replace(layer, '.', 1)
+                layer_number = re.search(r'\d+', layer).group(0)
+                return group_name, f"Layer {layer_number}"
+            return group_name, "Layer"
+            
+        norms = defaultdict(dict)
         for name, param in model.named_parameters():
-            values = param.detach().cpu().float().numpy()
+            p = param.detach().cpu().float()
+            if args.log_weight_norms: 
+                norm = torch.norm(p, p=norm_types[args.log_norm]).item()
+                group_name, identifier = get_group(name)
+                norms[group_name][identifier] = norm
+            values = p.numpy()
             if args.no_clearml:
                 hist, bounds = values, bins
             else:
@@ -508,6 +531,15 @@ def report_model_weights(args, model, step, bins=20):
                 xlabels=bounds
             )
 
+        if args.log_weight_norms:
+            for group, ids in norms.items():
+                for identifier in ids:
+                    args.tracker_logger.report_scalar(
+                        title=f'Weight {args.log_norm} Norm/{group}',
+                        series=identifier,
+                        value=norms[group][identifier],
+                        iteration=step
+                    )
 
 def report_lamb_coefficients(args, optimizer):
     if master_process(args):

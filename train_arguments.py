@@ -183,6 +183,17 @@ def get_argument_parser():
         help='Interval in epochs to log model weights and, possibly, activations.'
     )
     parser.add_argument(
+        '--log_weight_norms', 
+        action='store_true',
+        help='Log user-chosen norm of weights grouped by layer type'
+    )
+    parser.add_argument(
+        '--log_norm', 
+        type=str,
+        default="L1",
+        help='Weight norm to be logged'
+    )
+    parser.add_argument(
         '--data_path_prefix',
         type=str,
         default="",
@@ -349,7 +360,7 @@ def get_argument_parser():
     parser.add_argument(
         '--dict_backend',
         type=str,
-        default="nccl",
+        default="gloo",
         help='Backend for distributed training.'
     )
     return parser
