@@ -499,8 +499,9 @@ def report_model_weights(args, model, step, bins=20):
     if master_process(args):
         norm_types = {"L1": 1, "L2": 2, "Linf": float('inf')}
         if args.log_weight_norms and not args.logging_norm_type in norm_types:
-            raise ValueError(f"{args.logging_norm_type} is an invalid option for the args.logging_norm_type argument. Available options are: {', '.join(norm_types)}.")
-        attn_reached = False
+            raise ValueError(f"{args.logging_norm_type} is an invalid option \
+                             for the args.logging_norm_type argument. \
+                             Available options are: {', '.join(norm_types)}.")
 
         def get_group(name):
             """
@@ -508,17 +509,15 @@ def report_model_weights(args, model, step, bins=20):
             should be logged and the layer's identifier in the group.
             """
 
-            nonlocal attn_reached
-            if not attn_reached:
-                attn_reached = re.search(r'attn', name) or re.search(r'attention', name)
-            layer = re.search(r'\.layer\.\d+\.', name) # "module.bert.encoder.layer.0.attention.queries" -> ".layer.0."
+            # "module.bert.encoder.layer.0.attention.queries" -> ".layer.0."
+            layer = re.search(r'\.layer\.\d+\.', name) 
             if layer:
                 layer = layer.group(0)
                 group_name = name.replace(layer, '.', 1)
                 layer_number = re.search(r'\d+', layer).group(0)
                 return group_name, f"Layer {layer_number}"
 
-            return ("Parameters After Sequence Mixing", name) if attn_reached else ("Parameters Before Sequence Mixing", name)
+            return ("Embeddings parameters", name) if re.search(r'embed', name) else ("Other parameters", name)
 
         for name, param in model.named_parameters():
             p = param.detach().cpu().float()
