@@ -185,13 +185,13 @@ def get_argument_parser():
     parser.add_argument(
         '--log_weight_norms', 
         action='store_true',
-        help='Log user-chosen norm of weights grouped by layer type'
+        help='Log user-chosen norm of parameters (weights) grouped by parameter type'
     )
     parser.add_argument(
-        '--log_norm', 
+        '--logging_norm_type', 
         type=str,
         default="L1",
-        help='Weight norm to be logged'
+        help='Vector norm of parameters (weights) to be logged. Valid options are: L1, L2, Linf'
     )
     parser.add_argument(
         '--data_path_prefix',
