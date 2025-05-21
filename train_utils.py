@@ -73,15 +73,12 @@ class WandBWriter:
                         xlabels: Optional[list] = None) -> None:
         values = np.nan_to_num(values)
         xlabels = np.nan_to_num(np.array(xlabels))
-        plt.bar(
-    x=xlabels[:-1],         
-    height=values,           
-    width=np.diff(xlabels), 
-    align='edge',             
-    edgecolor='black'
-)
+        xlabels = np.array(xlabels)
+        bin_centers = 0.5 * (xlabels[1:] + xlabels[:-1])
+        plt.bar(bin_centers, values, width=xlabels[1] - xlabels[0], alpha=0.7, color='blue', edgecolor='black')
         plt.title(title)
         wandb.log({title:wandb.Image(plt)})
+        plt.close()
         
 
         
