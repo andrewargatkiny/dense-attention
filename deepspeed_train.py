@@ -6,6 +6,7 @@ import logging
 import numpy as np
 import random
 import json
+import re
 import torch
 import torch.distributed as dist
 from torch.utils.data import DataLoader, Dataset
@@ -496,8 +497,40 @@ def report_model_activations(args, model, data, step, bins=20, **kwargs):
 
 def report_model_weights(args, model, step, bins=20):
     if master_process(args):
+        norm_types = {"L1": 1, "L2": 2, "Linf": float('inf')}
+        if args.log_weight_norms and not args.logging_norm_type in norm_types:
+            raise ValueError(f"{args.logging_norm_type} is an invalid option \
+                             for the args.logging_norm_type argument. \
+                             Available options are: {', '.join(norm_types)}.")
+
+        def get_group(name):
+            """
+            Returns the group name under which the specified model parameter's vector norm 
+            should be logged and the layer's identifier in the group.
+            """
+
+            # "module.bert.encoder.layer.0.attention.queries" -> ".layer.0."
+            layer = re.search(r'\.layer\.\d+\.', name) 
+            if layer:
+                layer = layer.group(0)
+                group_name = name.replace(layer, '.', 1)
+                layer_number = re.search(r'\d+', layer).group(0)
+                return group_name, f"Layer {layer_number}"
+
+            return ("Embeddings parameters", name) if re.search(r'embed', name) else ("Other parameters", name)
+
         for name, param in model.named_parameters():
-            values = param.detach().cpu().float().numpy()
+            p = param.detach().cpu().float()
+            if args.log_weight_norms: 
+                norm = torch.norm(p, p=norm_types[args.logging_norm_type]).item()
+                group_name, identifier = get_group(name)
+                args.tracker_logger.report_scalar(
+                    title=f'{args.logging_norm_type} Norm/ {group_name}',
+                    series=identifier,
+                    value=norm,
+                    iteration=step
+                )
+            values = p.numpy()
             if args.no_clearml:
                 hist, bounds = values, bins
             else:
@@ -507,7 +540,6 @@ def report_model_weights(args, model, step, bins=20):
                 title=name, series=name, values=hist, iteration=step, 
                 xlabels=bounds
             )
-
 
 def report_lamb_coefficients(args, optimizer):
     if master_process(args):
