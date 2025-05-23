@@ -483,19 +483,10 @@ def report_model_activations(args, model, data, step, bins=20, **kwargs):
                 val_max, val_min = vals.max(), vals.min()
                 if args.tracking_system == "tensorboard":
                     hist, bounds = values, bins
-<<<<<<< HEAD
-                
                 elif args.tracking_system == "clearml" or args.tracking_system == "wandb":
-=======
-                    
-                elif args.tracking_system == "clearml":
->>>>>>> 2589e45ba44695b8f40f84865d1ec8f777fbde66
                     hist, bounds = np.histogram(vals, bins=bins,
                                                 range=(val_min, val_max))
                     bounds = list(bounds)
-                elif args.tracking_system == "wandb":
-                    hist, bounds = np.histogram(vals, bins=bins,
-                                                range=(val_min, val_max))
                 args.tracker_logger.report_histogram(
                     title=name, series=name, values=hist, iteration=step,
                     xlabels=bounds
