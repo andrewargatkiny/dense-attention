@@ -71,8 +71,6 @@ class WandBWriter:
                         values: list,
                         iteration: int,
                         xlabels: Optional[list] = None) -> None:
-        values = np.nan_to_num(values)
-        xlabels = np.nan_to_num(np.array(xlabels))
         xlabels = np.array(xlabels)
         bin_centers = 0.5 * (xlabels[1:] + xlabels[:-1])
         plt.bar(bin_centers, values, width=xlabels[1] - xlabels[0], alpha=0.7, color='blue', edgecolor='black')

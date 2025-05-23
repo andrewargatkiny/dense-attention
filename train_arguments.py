@@ -248,7 +248,7 @@ def get_argument_parser():
         '--tracking_system',
         default="clearml",
         type=str,
-        help="Don't use ClearML as experiment tracking system."
+        help="The system where plots and charts will be displayed. Possible values: clearml, tensorboardx, or wandb. Default is clearml."
     )
     parser.add_argument(
         '--ckpt_to_save',

@@ -483,14 +483,11 @@ def report_model_activations(args, model, data, step, bins=20, **kwargs):
                 val_max, val_min = vals.max(), vals.min()
                 if args.tracking_system == "tensorboard":
                     hist, bounds = values, bins
-                    
-                elif args.tracking_system == "clearml":
+                
+                elif args.tracking_system == "clearml" or args.tracking_system == "wandb":
                     hist, bounds = np.histogram(vals, bins=bins,
                                                 range=(val_min, val_max))
                     bounds = list(bounds)
-                elif args.tracking_system == "wandb":
-                    hist, bounds = np.histogram(vals, bins=bins,
-                                                range=(val_min, val_max))
                 args.tracker_logger.report_histogram(
                     title=name, series=name, values=hist, iteration=step,
                     xlabels=bounds
@@ -538,12 +535,10 @@ def report_model_weights(args, model, step, bins=20):
             values = p.numpy()
             if args.tracking_system == "tensorboard":
                 hist, bounds = values, bins
-            elif args.tracking_system == "clearml":
+            
+            elif args.tracking_system == "clearml" or args.tracking_system == "wandb":
                 hist, bounds = np.histogram(values, bins=bins, range=(np.nanmin(values), np.nanmax(values)))
                 bounds = list(bounds)
-            elif args.tracking_system == "wandb":
-                hist, bounds = np.histogram(values, bins=bins, range=(np.nanmin(values), np.nanmax(values)))
-
             args.tracker_logger.report_histogram(
                 title=name, series=name, values=hist, iteration=step, 
                 xlabels=bounds
