@@ -58,7 +58,6 @@ NCCL_TREE_THRESHOLD=0 deepspeed --include localhost:"$NODE" --master_port "$MAST
 --eval_test_data \
 --max_validation_samples 20000 \
 --log_diagnostic_freq 5 \
---log_weight_norms \
 --log_activations \
 --seed "$SEED" \
 --job_name $JOB_NAME \
