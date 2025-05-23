@@ -59,6 +59,7 @@ NCCL_TREE_THRESHOLD=0 deepspeed --include localhost:"$NODE" --master_port "$MAST
 --max_validation_samples 20000 \
 --log_diagnostic_freq 5 \
 --log_activations \
+--tracking_system "wandb" \
 --seed "$SEED" \
 --job_name $JOB_NAME \
 --deepspeed_config "$DS_CONFIG" \
