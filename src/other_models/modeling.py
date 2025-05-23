@@ -607,9 +607,9 @@ class BertEncoder(nn.Module):
 
         if config.local_attention:
             for i, layer in enumerate(self.layer):
-                if i % 3 == 1:
+                if i % 3 == 0:
                     layer.attention.self = BertSelfLocalAttention(config)
-                elif i % 3 == 2:
+                elif i % 3 == 1:
                     layer.attention.self = BertSelfShiftedLocalAttention(config)
 
     def forward(self,
