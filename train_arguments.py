@@ -295,6 +295,16 @@ def get_argument_parser():
         action='store_true',
         help='Log activation distributions for each parameter of the model every .'
     )
+
+    parser.add_argument("--keep_last_ckpts", type=int, default=3,
+                   help="Keep this many most-recent checkpoints (this run)")
+    parser.add_argument("--protect_every_k", type=int, default=50,
+                   help="Protect checkpoint if (epoch-1) %% K == 0")
+    parser.add_argument("--protect_epochs",
+                   type=lambda s: [int(x) for x in s.split(',') if s],
+                   default=[],
+                   help="Comma-separated epochs that must never be deleted")
+
     parser.add_argument(
         '--unpad_inputs',
         default=False,

@@ -2,6 +2,7 @@ import os
 import sys
 import time
 import logging
+import shutil
 
 import numpy as np
 import random
@@ -32,6 +33,49 @@ last_global_step_from_restore = 0
 all_step_time = 0.0
 
 
+def _epoch_from_tag(tag):
+    try:
+        return int(tag.split('epoch')[1].split('_')[0])
+    except Exception:
+        return -1
+
+
+def manage_checkpoints(path, args):
+    """Prune old ckpts produced during this run according to flags."""
+    if not master_process(args):
+        return
+
+    try:
+        tags = [d for d in os.listdir(path)
+                if d.startswith("epoch")
+                and os.path.isdir(os.path.join(path, d))]
+    except FileNotFoundError:
+        return
+
+    current_run_tags = [t for t in tags if t not in args.preexisting_checkpoints]
+    if len(current_run_tags) <= args.keep_last_ckpts:
+        return
+
+    current_run_tags.sort(key=_epoch_from_tag) # oldest -> newest
+
+    protected = set()
+    for tag in current_run_tags:
+        epoch = _epoch_from_tag(tag)
+        if ((epoch - 1) % args.protect_every_k) == 0:
+            protected.add(tag)
+        if epoch in args.protect_epochs:
+            protected.add(tag)
+
+    victims = [t for t in current_run_tags[:-args.keep_last_ckpts]
+               if t not in protected]
+    for tag in victims:
+        try:
+            shutil.rmtree(os.path.join(path, tag))
+            logging.info(f"[ckpt-clean] removed {tag}")
+        except Exception as e:
+            logging.warning(f"[ckpt-clean] could not delete {tag}: {e}")
+
+
 def checkpoint_model(PATH, ckpt_id, model, epoch, last_global_step,
                      last_global_data_samples, **kwargs):
     """Utility function for checkpointing model + optimizer dictionaries
@@ -50,6 +94,7 @@ def checkpoint_model(PATH, ckpt_id, model, epoch, last_global_step,
     status_msg = 'checkpointing: PATH={}, ckpt_id={}'.format(PATH, ckpt_id)
     if success:
         logging.info(f"Success {status_msg}")
+        manage_checkpoints(PATH, model.args)
     else:
         logging.warning(f"Failure {status_msg}")
     return
@@ -722,6 +767,7 @@ def prepare_model_optimizer(args):
         args=args,
         model=model,
         model_parameters=optimizer_grouped_parameters)
+    model.args = args # let manage_checkpoints() access flags via model.args
 
     # Overwrite application configs with DeepSpeed config
     args.train_micro_batch_size_per_gpu = model.train_micro_batch_size_per_gpu(
@@ -883,6 +929,16 @@ def run(args, model, optimizer, start_epoch):
 def main():
     start = time.time()
     args = construct_arguments()
+    
+    # remember folders produced by previous runs
+    save_root = os.path.join(args.output_dir, "saved_models")
+    os.makedirs(save_root, exist_ok=True)
+    args.saved_model_path = os.path.join(save_root, args.job_name)
+    preexist = set()
+    if os.path.isdir(args.saved_model_path):
+        preexist = {d for d in os.listdir(args.saved_model_path)
+                    if d.startswith("epoch")}
+    args.preexisting_checkpoints = preexist
     model, optimizer = prepare_model_optimizer(args)
     if master_process(args):
         os.makedirs(args.saved_model_path, exist_ok=True)

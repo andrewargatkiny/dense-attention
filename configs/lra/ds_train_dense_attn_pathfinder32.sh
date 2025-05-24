@@ -16,35 +16,44 @@ BASE_JOB_NAME="lra_pathfinder_32"
 CHECKPOINT_BASE_PATH=""
 CHECKPOINT_EPOCH_NAME=""
 
-# Check if we're resuming from a checkpoint
 if [ "$1" = "--resume" ]; then
-    if [ -n "$2" ]; then
-        LOAD_EPOCH=$2
-    else
-        echo "Epoch number for model checkpoint is not defined, exiting."
-        echo "Usage: ./your_train_script_name.sh [--resume EPOCH DIR_WITH_TRAIN_ARTIFACTS]"
-        exit 1
-    fi
+  shift
 
-    if [ -z "$3" ]; then
-        echo "Subdirectory with model weights is not defined, exiting."
-        echo "Usage: ./your_train_script_name.sh [--resume EPOCH DIR_WITH_TRAIN_ARTIFACTS]"
-        exit 1
-    else
-        SUBDIR=$3
-    fi
+  if echo "$1" | grep -qE '^[0-9]+$'; then
+    LOAD_EPOCH=$1
+    shift
+  else
+    LOAD_EPOCH=""
+  fi
 
-    CHECKPOINT_BASE_PATH=${OUTPUT_DIR}/saved_models/${SUBDIR}
-    CHECKPOINT_EPOCH_NAME=$(basename ${CHECKPOINT_BASE_PATH}/epoch${LOAD_EPOCH}_*)
-    echo "checkpoint id: $CHECKPOINT_EPOCH_NAME"
-    DATESTAMP=$(date +'%Y-%m-%d_%H-%M')
-    JOB_NAME="${SUBDIR}_from_epoch_${LOAD_EPOCH}_${DATESTAMP}"
+  if [ -z "${1-}" ]; then
+    echo "Usage: $0 [--resume [EPOCH] JOB_NAME]" >&2
+    exit 1
+  fi
+  SUBDIR=$1
+  shift
+
+  CHECKPOINT_BASE_PATH="${OUTPUT_DIR}/saved_models/${SUBDIR}"
+
+  if [ -z "$LOAD_EPOCH" ]; then
+    LATEST_TAG=$(ls "$CHECKPOINT_BASE_PATH" \
+                 | grep '^epoch' | sort -V | tail -n1)
+    LOAD_EPOCH=$(printf '%s\n' "$LATEST_TAG" \
+                 | sed -E 's/^epoch([0-9]+).*/\1/')
+    CHECKPOINT_EPOCH_NAME="$LATEST_TAG"
+  else
+    CHECKPOINT_EPOCH_NAME=$(basename "${CHECKPOINT_BASE_PATH}/epoch${LOAD_EPOCH}"_*)
+  fi
+
+  echo ">> Resuming from checkpoint: $CHECKPOINT_EPOCH_NAME (epoch $LOAD_EPOCH)"
+
+  DATESTAMP=$(date +'%Y-%m-%d_%H-%M')
+  JOB_NAME="${SUBDIR}"
+
 else
-    # Set up for initial training
-    DATESTAMP=$(date +'%Y-%m-%d_%H-%M')
-    JOB_NAME=${BASE_JOB_NAME}_${DATESTAMP}
+  DATESTAMP=$(date +'%Y-%m-%d_%H-%M')
+  JOB_NAME="${BASE_JOB_NAME}_${DATESTAMP}"
 fi
-
 
 mkdir -p $OUTPUT_DIR
 
@@ -68,5 +77,7 @@ NCCL_TREE_THRESHOLD=0 deepspeed --include localhost:"$NODE" --master_port "$MAST
 --inputs_logging_ratio 0.1 \
 --load_training_checkpoint $CHECKPOINT_BASE_PATH \
 --load_checkpoint_id $CHECKPOINT_EPOCH_NAME \
+--keep_last_ckpts 3 \
+--ckpt_to_save 1 \
 --project_name "lra-pathfinder-32" \
 &> ${JOB_NAME}.log
