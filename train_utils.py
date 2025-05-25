@@ -4,8 +4,12 @@ import argparse
 import time
 import math
 
+import matplotlib.pyplot as plt
 from scipy.stats import pearsonr, spearmanr
 
+import numpy as np
+import wandb
+from typing import Optional
 import torch
 import torch.distributed as dist
 from tensorboardX import SummaryWriter
@@ -35,6 +39,47 @@ class TensorBoardWriter:
     def report_histogram(self, title, series, values, iteration, xlabels):
         self.summary_writer.add_histogram(tag=title, values=values,
                                           global_step=iteration, bins=xlabels)
+
+class WandBWriter:        
+    def __init__(self, 
+                 name: str, 
+                 args, 
+                 base: str = "..",
+                 ):
+        self.run = wandb.init(
+            project=name,
+            name="research",
+            config={
+                          **vars(args),
+                          "bert_config": args.config,
+                          "deepspeed_config": args.deepspeed_config
+                      }
+        )
+        
+    def report_scalar(self, 
+                     title: str, 
+                     series: str, 
+                     value: float, 
+                     iteration: int) -> None:
+        wandb.log({
+            title+'/'+series: value,
+        })
+        
+    def report_histogram(self,
+                        title: str,
+                        series: str,
+                        values: list,
+                        iteration: int,
+                        xlabels: Optional[list] = None) -> None:
+        xlabels = np.array(xlabels)
+        bin_centers = 0.5 * (xlabels[1:] + xlabels[:-1])
+        plt.bar(bin_centers, values, width=xlabels[1] - xlabels[0], alpha=0.7, color='blue', edgecolor='black')
+        plt.title(title)
+        wandb.log({title:wandb.Image(plt)})
+        plt.close()
+        
+
+        
 
 
 
