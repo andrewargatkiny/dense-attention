@@ -20,7 +20,7 @@ from utils.tasks import TaskRegistry
 from train_arguments import get_argument_parser
 from utils.logger import Logger
 from utils.optimization import warmup_exp_decay_exp, cosine_poly_warmup_decay
-from train_utils import is_time_to_exit, master_process, TensorBoardWriter, manage_checkpoints
+from train_utils import is_time_to_exit, master_process, TensorBoardWriter, WandBWriter, manage_checkpoints
 
 from data.dataset_utils import ShardedDatasetWrapper, create_dataloader
 
