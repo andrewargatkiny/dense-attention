@@ -172,7 +172,7 @@ class DANetEncoder(nn.Module):
             for i in range(config.num_hidden_layers):
                 if 'softmax' in self.local_scheme[i % len(self.local_scheme)]:
                     layers[i] = TransformerLayer(config, i)
-        if args.scale_ffn_weights:
+        if hasattr(args, "scale_ffn_weights") and args.scale_ffn_weights:
             for layer in layers:
                 layer.ffn.forward = layer.ffn.forward_scaled
         self.layer = nn.ModuleList(layers)
@@ -457,8 +457,7 @@ class DANetModel(DANetPreTrainedModel):
         self.sparse_attention_config = None  # get_sparse_attention_config(
         #     args, config.num_attention_heads)
         # self.sparse_attention_utils = get_sparse_attention_utils(self.sparse_attention_config)
-        self.encoder = DANetEncoder(
-            config, args)
+        self.encoder = DANetEncoder(config, args)
         self.pooler = BertPooler(config)
         self.apply(self.init_bert_weights)
         logger.info("Init BERT pretrain model")
@@ -588,22 +587,23 @@ class DANetForPreTraining(DANetPreTrainedModel):
     def __init__(self, config: ModelConfig, args):
         super(DANetForPreTraining, self).__init__(config)
         self.bert = DANetModel(config, args)
-        self.num_labels = args.num_labels
+        self.num_labels = args.num_labels if hasattr(args, "num_labels") else 2
         self.cls = BertPreTrainingHeads(
-            config, self.bert.embeddings.word_embeddings.weight, num_labels=args.num_labels)
+            config, self.bert.embeddings.word_embeddings.weight, num_labels=self.num_labels)
         self.loss_fct = CrossEntropyLoss(ignore_index=-1)
         self.window_size = config.window_size
 
         self.head = self.mlm_cls_head
-        if args.only_mlm_task and args.only_cls_task:
+        if (hasattr(args,'only_mlm_task') and hasattr(args,'only_cls_task')
+                and args.only_mlm_task and args.only_cls_task):
             raise ValueError("Only one of the options 'only_mlm_task' "
                              "and 'only_cls_task' should hold True.")
-        if args.only_mlm_task:
+        if hasattr(args,'only_mlm_task') and args.only_mlm_task:
             self.head = self.mlm_head
-        elif args.only_cls_task:
+        elif hasattr(args,'only_cls_task') and args.only_cls_task:
             self.head = self.cls_head
 
-        if args.unpad_inputs:
+        if hasattr(args,'unpad_inputs') and args.unpad_inputs:
             for i in range(config.num_hidden_layers):
                 self.bert.embeddings.forward = self.bert.embeddings.forward_unpadded
                 self.bert.encoder.layer[i].forward = (
@@ -958,7 +958,7 @@ class BertForSequenceClassification(DANetPreTrainedModel):
 
     def __init__(self, config, args):
         super(BertForSequenceClassification, self).__init__(config)
-        self.num_labels = args.num_labels
+        self.num_labels = args.num_labels if hasattr(args, "num_labels") else 2
         self.window_size = config.window_size
         self.bert = DANetModel(config, args)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
@@ -971,7 +971,7 @@ class BertForSequenceClassification(DANetPreTrainedModel):
         """
 
         self.apply(self.init_bert_weights)
-        if args.zero_init_pooler:
+        if hasattr(args, "zero_init_pooler") and args.zero_init_pooler:
             self.bert.pooler.dense_act.weight.data.zero_()
         self.use_local_attention = config.local_attention
 
@@ -1062,7 +1062,7 @@ class BertForRegression(DANetPreTrainedModel):
 
     def __init__(self, config, args):
         super(BertForRegression, self).__init__(config)
-        self.num_labels = args.num_labels
+        self.num_labels = args.num_labels if hasattr(args, "num_labels") else 2
         self.window_size = config.window_size
         self.bert = DANetModel(config, args)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
@@ -1075,7 +1075,7 @@ class BertForRegression(DANetPreTrainedModel):
         """
 
         self.apply(self.init_bert_weights)
-        if args.zero_init_pooler:
+        if hasattr(args, "zero_init_pooler") and args.zero_init_pooler:
             self.bert.pooler.dense_act.weight.data.zero_()
         self.use_local_attention = config.local_attention
 
@@ -1166,7 +1166,7 @@ class BertForAANMatching(DANetPreTrainedModel):
 
     def __init__(self, config, args):
         super(BertForAANMatching, self).__init__(config)
-        self.num_labels = args.num_labels
+        self.num_labels = args.num_labels if hasattr(args, "num_labels") else 2
         self.window_size = config.window_size
         self.bert = DANetModel(config, args)
         self.dense = nn.Linear(config.hidden_size * 4, config.hidden_size, bias=False)
