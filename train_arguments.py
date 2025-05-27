@@ -297,13 +297,18 @@ def get_argument_parser():
     )
 
     parser.add_argument("--keep_last_ckpts", type=int, default=3,
-                   help="Keep this many most-recent checkpoints (this run)")
-    parser.add_argument("--protect_every_k", type=int, default=50,
-                   help="Protect checkpoint if (epoch-1) %% K == 0")
-    parser.add_argument("--protect_epochs",
-                   type=lambda s: [int(x) for x in s.split(',') if s],
-                   default=[],
-                   help="Comma-separated epochs that must never be deleted")
+                        help="Keep this many most-recent checkpoints (this run) "
+                             "from deletion.")
+    parser.add_argument("--keep_ckpt_every", type=int, default=50,
+                        help="Protect checkpoint from deletion if "
+                             "(epoch-1) %% keep_ckpt_every == 0")
+    parser.add_argument("--keep_ckpt_epochs",
+                        type=lambda s: [int(x) for x in s.split(',') if s],
+                        default=[],
+                        help="Comma-separated epochs (e.g. 100,180,200) that "
+                             "must never be deleted")
+    # TODO: implement offset functionality for saving checkpoints and keeping them from deletion
+    
 
     parser.add_argument(
         '--unpad_inputs',

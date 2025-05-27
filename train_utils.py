@@ -3,6 +3,7 @@ import sys
 import argparse
 import time
 import math
+import shutil
 
 from scipy.stats import pearsonr, spearmanr
 
@@ -19,6 +20,49 @@ def master_process(args):
     return (not args.no_cuda
             and dist.get_rank() == 0) or (args.no_cuda
                                           and args.local_rank == -1)
+def _epoch_from_tag(tag: str) -> int:
+    try:
+        return int(tag.split('epoch')[1].split('_')[0])
+    except Exception:
+        return -1
+
+
+def manage_checkpoints(path, args):
+    """Delete unprotected checkpoints beyond --keep_last_ckpts."""
+    if not ((not args.no_cuda and dist.get_rank() == 0) or
+            (args.no_cuda and args.local_rank == -1)):
+        return
+
+    try:
+        tags = [d for d in os.listdir(path)
+                if d.startswith("epoch") and
+                os.path.isdir(os.path.join(path, d))]
+    except FileNotFoundError:
+        return
+
+    current_tags = [t for t in tags if t not in args.preexisting_checkpoints]
+    if len(current_tags) <= args.keep_last_ckpts:
+        return
+
+    current_tags.sort(key=_epoch_from_tag)          # oldest → newest
+
+    protected = set()
+    for tag in current_tags:
+        epoch = _epoch_from_tag(tag)
+        if args.keep_ckpt_every and ((epoch - 1) % args.keep_ckpt_every) == 0:
+            protected.add(tag)
+        if epoch in args.keep_ckpt_epochs:
+            protected.add(tag)
+
+    to_delete = [t for t in current_tags[:-args.keep_last_ckpts]
+                 if t not in protected]
+
+    for tag in to_delete:
+        try:
+            shutil.rmtree(os.path.join(path, tag))
+            print(f"[ckpt-clean] removed {tag}")
+        except Exception as e:
+            print(f"[ckpt-clean] could not delete {tag}: {e}")
 
 class TensorBoardWriter:
     """Replacement class for the case when ClearML logging is disabled"""

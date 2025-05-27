@@ -1,7 +1,6 @@
 #!/bin/bash
 
 base_dir=`pwd`
-
 SEED=${SEED:-100}
 NODE=${NODE:-0}
 MASTER_PORT=${MASTER_PORT:-29500}
@@ -16,41 +15,35 @@ BASE_JOB_NAME="lra_pathfinder_32"
 CHECKPOINT_BASE_PATH=""
 CHECKPOINT_EPOCH_NAME=""
 
-if [ "$1" = "--resume" ]; then
+if [ "${1-}" = "--resume" ]; then
   shift
-
-  if echo "$1" | grep -qE '^[0-9]+$'; then
-    LOAD_EPOCH=$1
-    shift
+  # Handle EPOCH or the keyword 'last'
+  if echo "${1-}" | grep -qE '^[0-9]+$'; then
+    LOAD_EPOCH=$1; shift
+  elif [ "${1-}" = "last" ]; then
+    LOAD_EPOCH=""; shift
   else
     LOAD_EPOCH=""
   fi
 
-  if [ -z "${1-}" ]; then
-    echo "Usage: $0 [--resume [EPOCH] JOB_NAME]" >&2
-    exit 1
-  fi
+  [ $# -ge 1 ] || { echo "Usage: $0 --resume [EPOCH|last] JOB_NAME"; exit 1; }
   SUBDIR=$1
-  shift
 
   CHECKPOINT_BASE_PATH="${OUTPUT_DIR}/saved_models/${SUBDIR}"
 
-  if [ -z "$LOAD_EPOCH" ]; then
-    LATEST_TAG=$(ls "$CHECKPOINT_BASE_PATH" \
-                 | grep '^epoch' | sort -V | tail -n1)
-    LOAD_EPOCH=$(printf '%s\n' "$LATEST_TAG" \
-                 | sed -E 's/^epoch([0-9]+).*/\1/')
+  if [ -z "$LOAD_EPOCH" ]; then # auto-detect newest
+    LATEST_TAG=$(ls "$CHECKPOINT_BASE_PATH" | grep '^epoch' | sort -V | tail -n1)
+    LOAD_EPOCH=$(printf '%s\n' "$LATEST_TAG" | sed -E 's/^epoch([0-9]+).*/\1/')
     CHECKPOINT_EPOCH_NAME="$LATEST_TAG"
   else
     CHECKPOINT_EPOCH_NAME=$(basename "${CHECKPOINT_BASE_PATH}/epoch${LOAD_EPOCH}"_*)
   fi
 
-  echo ">> Resuming from checkpoint: $CHECKPOINT_EPOCH_NAME (epoch $LOAD_EPOCH)"
+  echo ">> Resuming from checkpoint: $CHECKPOINT_EPOCH_NAME"
 
-  DATESTAMP=$(date +'%Y-%m-%d_%H-%M')
-  JOB_NAME="${SUBDIR}"
-
+  JOB_NAME="$SUBDIR"
 else
+  # Set up for initial training
   DATESTAMP=$(date +'%Y-%m-%d_%H-%M')
   JOB_NAME="${BASE_JOB_NAME}_${DATESTAMP}"
 fi
