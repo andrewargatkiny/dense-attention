@@ -526,7 +526,7 @@ def report_model_weights(args, model, step, bins=20):
                 norm = torch.norm(p, p=norm_types[args.logging_norm_type]).item()
                 group_name, identifier = get_group(name)
                 args.tracker_logger.report_scalar(
-                    title=f'{args.logging_norm_type} Norm/ {group_name}',
+                    title=f':{args.logging_norm_type} Norm/ {group_name}',
                     series=identifier,
                     value=norm,
                     iteration=step
