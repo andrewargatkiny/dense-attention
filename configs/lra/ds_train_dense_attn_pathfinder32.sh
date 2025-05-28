@@ -1,5 +1,10 @@
 #!/bin/bash
 
+params=""
+if [ $# -ne 0 ]; then
+    params="$*"
+fi
+
 base_dir=`pwd`
 
 SEED=${SEED:-100}
@@ -70,4 +75,5 @@ NCCL_TREE_THRESHOLD=0 deepspeed --include localhost:"$NODE" --master_port "$MAST
 --load_training_checkpoint $CHECKPOINT_BASE_PATH \
 --load_checkpoint_id $CHECKPOINT_EPOCH_NAME \
 --project_name "lra-pathfinder-32" \
+--override $params \
 &> ${JOB_NAME}.log
