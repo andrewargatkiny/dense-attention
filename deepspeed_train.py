@@ -16,7 +16,7 @@ from tqdm import tqdm
 
 from src.model_config import ModelConfig
 from utils.tasks import TaskRegistry
-from train_arguments import get_argument_parser
+from train_arguments import get_argument_parser, override_configs
 from utils.logger import Logger
 from utils.optimization import warmup_exp_decay_exp, cosine_poly_warmup_decay
 from train_utils import is_time_to_exit, master_process, TensorBoardWriter, WandBWriter
@@ -577,7 +577,9 @@ def get_arguments():
 
 def construct_arguments():
     args = get_arguments()
-
+    # Overriding parameters in configs
+    if args.override:
+        override_configs(args)
     # Prepare Logger
     logger = Logger(cuda=torch.cuda.is_available() and not args.no_cuda)
     args.logger = logger
