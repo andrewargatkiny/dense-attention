@@ -1,6 +1,20 @@
 import sys
 import argparse
+import json
+import logging
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    handlers=[
+        logging.FileHandler("app.log", encoding="utf-8"),
+        logging.StreamHandler(sys.stdout),
+    ],
+    force=True
+)
+logger = logging.getLogger(__name__)
+   
 def get_argument_parser():
     parser = argparse.ArgumentParser()
 
@@ -364,6 +378,93 @@ def get_argument_parser():
         default="nccl",
         help='Backend for distributed training.'
     )
-
+    parser.add_argument(
+        '--override',
+        type=str,
+        default=None,
+        nargs='+',
+        help='Override model and deepspeed configs parameters'
+    )
 
     return parser
+
+def parse_override_string(config_paths: dict, override: str):
+    """Parse a single override string in the format 'cf.key=value' or 'ds.key=value'.
+    """
+    first_dot = override.find('.')
+    end_eq = override.find('=')
+    
+    if first_dot == -1 or end_eq == -1:
+        raise ValueError(f"Invalid override format: '{override}' (expected: cf.key=value or ds.key=value)")
+    
+    cfg_name = override[:first_dot]
+    key_path = override[first_dot + 1:end_eq]
+    value = override[end_eq + 1:]
+    
+    logger.info(
+        "Parsed override: cfg_name=%s, key_path=%s, value=%s",
+        config_paths[cfg_name], key_path, value
+    )
+    return (cfg_name, key_path, value)
+
+def set_nested_checked(config_dict: dict, key_path: str, value):
+    """Safely set a nested value in a configuration dictionary, validating the path exists.
+    """
+    keys = key_path.split('.')
+    target_dict = config_dict
+
+    for key in keys[:-1]:
+        if key not in target_dict or not isinstance(target_dict[key], dict):
+            raise KeyError(f"The path '{key_path}' does not exist under the key '{key}'")
+        target_dict = target_dict[key]
+
+    final_key = keys[-1]
+    if final_key not in target_dict:
+        raise KeyError(f"The final key '{final_key}' does not exist in '{key_path}'")
+
+    target_dict[final_key] = value
+    logger.info("Set %s = %r", key_path, value)
+    
+def parse_value(val: str):
+    """Parse a string value into a JSON type if possible, otherwise return as string.
+    """
+    try:
+        return json.loads(val)
+    except json.JSONDecodeError:
+        return val
+
+def apply_overrides(configs: dict[str, dict], overrides: list[tuple[str, str, str]]):
+    """Apply a list of parsed overrides to their respective configuration dictionaries.
+    """
+    for cfg_name, key_path, raw_value in overrides:
+        if cfg_name not in configs:
+            raise KeyError(f"Use --override cf. or --override ds.")
+        value = parse_value(raw_value)
+        set_nested_checked(configs[cfg_name], key_path, value)
+
+def save_configs(configs: dict[str, dict], paths: dict[str, str]):
+    """Save each configuration dictionary back to its file path in JSON format.
+    """
+    for name, data in configs.items():
+        with open(paths[name], 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+        logger.info("Saved config to '%s'", paths[name])
+
+def override_configs(args):
+    """Load, apply overrides, and save configuration files based on CLI arguments.
+    """
+    config_paths = {
+        "cf": args.config_file,
+        "ds": args.deepspeed_config
+    }
+    configs = {}
+    
+    for name, path in config_paths.items():
+        with open(path, 'r', encoding='utf-8') as f:
+            configs[name] = json.load(f)
+            logger.info("Loaded config '%s' from %s", name, path)
+            
+    overrides = [parse_override_string(config_paths, ovr) for ovr in args.override]
+    
+    apply_overrides(configs, overrides)
+    save_configs(configs, config_paths)
