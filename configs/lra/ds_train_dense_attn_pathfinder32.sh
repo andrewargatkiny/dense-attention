@@ -41,7 +41,7 @@ if [ "${1-}" = "--resume" ]; then
 
   echo ">> Resuming from checkpoint: $CHECKPOINT_EPOCH_NAME"
 
-  JOB_NAME="$SUBDIR"
+  JOB_NAME="${SUBDIR}_from_epoch_${LOAD_EPOCH}_${DATESTAMP}"
 else
   # Set up for initial training
   DATESTAMP=$(date +'%Y-%m-%d_%H-%M')
