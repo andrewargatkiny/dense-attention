@@ -245,10 +245,11 @@ def get_argument_parser():
         help="Max samples in an evaluation dataset to be used at eval time."
     )
     parser.add_argument(
-        '--no_clearml',
-        default=False,
-        action='store_true',
-        help="Don't use ClearML as experiment tracking system."
+        '--tracking_system',
+        default='clearml',
+        type=str,
+        help="ML tracking system to log the experiment details."
+        "Valid options are: 'clearml', 'tensorboard', or 'wandb'. Default is 'clearml'."
     )
     parser.add_argument(
         '--ckpt_to_save',
@@ -378,4 +379,6 @@ def get_argument_parser():
         default="nccl",
         help='Backend for distributed training.'
     )
+
+
     return parser

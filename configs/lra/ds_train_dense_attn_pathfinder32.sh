@@ -6,6 +6,7 @@ NODE=${NODE:-0}
 MASTER_PORT=${MASTER_PORT:-29500}
 CONFIG=${CONFIG:-${base_dir}/configs/lra/dense_attn_pathfinder32.json}
 DS_CONFIG=${DS_CONFIG:-${base_dir}/configs/lra/deepspeed_config_pathfinder32.json}
+TRACKING_SYSTEM=${TRACKING_SYSTEM:-clearml}
 
 OUTPUT_DIR=${base_dir}/bert_model_dense_attn_adam_outputs
 BASE_JOB_NAME="lra_pathfinder_32"
@@ -61,8 +62,8 @@ NCCL_TREE_THRESHOLD=0 deepspeed --include localhost:"$NODE" --master_port "$MAST
 --eval_test_data \
 --max_validation_samples 20000 \
 --log_diagnostic_freq 5 \
---log_weight_norms \
 --log_activations \
+--tracking_system "$TRACKING_SYSTEM" \
 --seed "$SEED" \
 --job_name $JOB_NAME \
 --deepspeed_config "$DS_CONFIG" \

@@ -482,16 +482,17 @@ def report_model_activations(args, model, data, step, bins=20, **kwargs):
             try:
                 vals = values#.mean(axis=-1)
                 val_max, val_min = vals.max(), vals.min()
-                if args.no_clearml:
+                if args.tracking_system == "tensorboard":
                     hist, bounds = values, bins
-                else:
+                elif args.tracking_system == "clearml" or args.tracking_system == "wandb":
                     hist, bounds = np.histogram(vals, bins=bins,
                                                 range=(val_min, val_max))
                     bounds = list(bounds)
                 args.tracker_logger.report_histogram(
                     title=name, series=name, values=hist, iteration=step,
                     xlabels=bounds
-                )
+                    )
+                
             except Exception as ex:
                 print(ex)
 
@@ -526,15 +527,16 @@ def report_model_weights(args, model, step, bins=20):
                 norm = torch.norm(p, p=norm_types[args.logging_norm_type]).item()
                 group_name, identifier = get_group(name)
                 args.tracker_logger.report_scalar(
-                    title=f'{args.logging_norm_type} Norm/ {group_name}',
+                    title=f':{args.logging_norm_type} Norm/ {group_name}',
                     series=identifier,
                     value=norm,
                     iteration=step
                 )
             values = p.numpy()
-            if args.no_clearml:
+            if args.tracking_system == "tensorboard":
                 hist, bounds = values, bins
-            else:
+            elif args.tracking_system == "clearml" or args.tracking_system == "wandb":
+
                 hist, bounds = np.histogram(values, bins=bins, range=(np.nanmin(values), np.nanmax(values)))
                 bounds = list(bounds)
             args.tracker_logger.report_histogram(
@@ -881,7 +883,6 @@ def run(args, model, optimizer, start_epoch):
             )
             break
 
-
 def main():
     start = time.time()
     args = construct_arguments()
@@ -896,17 +897,21 @@ def main():
     model, optimizer = prepare_model_optimizer(args)
     if master_process(args):
         os.makedirs(args.saved_model_path, exist_ok=True)
-        # Set experiment tracking
-        if not args.no_clearml:
-            task = Task.init(project_name=args.project_name,
-                             task_name="research", reuse_last_task_id=False)
-            Task.set_random_seed(args.seed)
-            task.connect(args)
-            task.connect(args.config, 'bert_config')
-            task.connect_configuration(args.deepspeed_config,
-                                       name='deepspeed_config')
-            args.tracker_logger = task.get_logger()
-        else:
+        if args.tracking_system == "wandb":
+          wb = WandBWriter(name = args.project_name,args = args)
+          args.tracker_logger = wb
+        
+        elif args.tracking_system == "clearml":
+          task = Task.init(project_name=args.project_name,
+                            task_name="research", reuse_last_task_id=False)
+          Task.set_random_seed(args.seed)
+          task.connect(args)
+          task.connect(args.config, 'bert_config')
+          task.connect_configuration(args.deepspeed_config,
+                                      name='deepspeed_config')
+          args.tracker_logger = task.get_logger()
+
+        elif args.tracking_system == "tensorboard":
             args.tracker_logger = TensorBoardWriter(name=args.job_name,
                                                     base=args.output_dir)
 
@@ -922,5 +927,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
