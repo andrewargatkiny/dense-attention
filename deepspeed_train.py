@@ -630,73 +630,83 @@ def construct_arguments():
 
 
 def prepare_optimizer_parameters(args, model):
-    config = args.config
-    deepspeed_config = json.load(
-        open(args.deepspeed_config, 'r', encoding='utf-8'))
-    params_to_optimize = list(model.named_parameters())
-    #params_to_optimize = [n for n in params_to_optimize if #'pooler' not in n[0] and
-    #                   'embeddings' not in n[0] and 'layer' not in n[0]]
-    no_decay_list = ['bias', 'LayerNorm.bias', 'LayerNorm.weight',
-                     'activation.weight', 'layer_norm.weight']
-    if args.no_decay_embeddings:
-        no_decay_list += ['embeddings']
-    if args.no_decay_pooler:
-        no_decay_list += ['pooler']
-    if "weight_decay" in config["training"].keys():
-        weight_decay = config["training"]["weight_decay"]
+    if hasattr(model, 'hf_config'):  # HF model detected
+        param_optimizer = list(model.named_parameters())
+        no_decay = ['bias', 'LayerNorm.bias', 'LayerNorm.weight']
+        return [
+            {'params': [p for n, p in param_optimizer if not any(nd in n for nd in no_decay)],
+             'weight_decay': args.config["training"]["weight_decay"]},
+            {'params': [p for n, p in param_optimizer if any(nd in n for nd in no_decay)],
+             'weight_decay': 0.0}
+        ]
     else:
-        weight_decay = 0.01
+        config = args.config
+        deepspeed_config = json.load(
+            open(args.deepspeed_config, 'r', encoding='utf-8'))
+        params_to_optimize = list(model.named_parameters())
+        #params_to_optimize = [n for n in params_to_optimize if #'pooler' not in n[0] and
+        #                   'embeddings' not in n[0] and 'layer' not in n[0]]
+        no_decay_list = ['bias', 'LayerNorm.bias', 'LayerNorm.weight',
+                        'activation.weight', 'layer_norm.weight']
+        if args.no_decay_embeddings:
+            no_decay_list += ['embeddings']
+        if args.no_decay_pooler:
+            no_decay_list += ['pooler']
+        if "weight_decay" in config["training"].keys():
+            weight_decay = config["training"]["weight_decay"]
+        else:
+            weight_decay = 0.01
 
 
-    groups = [{'params': list(model.bert.embeddings.parameters()),
-               'lr': 0.0,
-               'weight_decay': weight_decay,
-               'name': 'embeddings'}]
-    for i in range(len(model.bert.encoder.layer)):
-        if args.dense_attention:
-            # If some kind of layer norm in attention layer has learnable
-            # params, they wouldn't be updated.
-            groups.append({
-                'params': list(model.bert.encoder.layer[i].attention.parameters()),
+        groups = [{'params': list(model.bert.embeddings.parameters()),
                 'lr': 0.0,
                 'weight_decay': weight_decay,
-                'name': f'layer_{i}_attention'
-            })
-            if hasattr(model.bert.encoder.layer[i], 'ffn'):
+                'name': 'embeddings'}]
+        for i in range(len(model.bert.encoder.layer)):
+            if args.dense_attention:
+                # If some kind of layer norm in attention layer has learnable
+                # params, they wouldn't be updated.
                 groups.append({
-                    'params': list(model.bert.encoder.layer[i].ffn.parameters()),
+                    'params': list(model.bert.encoder.layer[i].attention.parameters()),
                     'lr': 0.0,
                     'weight_decay': weight_decay,
-                    'name': f'layer_{i}_ffn'
+                    'name': f'layer_{i}_attention'
                 })
-        else:
-            groups.append({
-                'params': list(model.bert.encoder.layer[i].parameters()),
-                'lr': 0.0,
-                'weight_decay': weight_decay,
-                'name': f'layer_{i}_attention'
-            })
+                if hasattr(model.bert.encoder.layer[i], 'ffn'):
+                    groups.append({
+                        'params': list(model.bert.encoder.layer[i].ffn.parameters()),
+                        'lr': 0.0,
+                        'weight_decay': weight_decay,
+                        'name': f'layer_{i}_ffn'
+                    })
+            else:
+                groups.append({
+                    'params': list(model.bert.encoder.layer[i].parameters()),
+                    'lr': 0.0,
+                    'weight_decay': weight_decay,
+                    'name': f'layer_{i}_attention'
+                })
 
 
-    optimizer_grouped_parameters = [{
-        'params': [
-            p for n, p in params_to_optimize
-            if not any(stop_word in n for stop_word in no_decay_list)
-        ],
-        'lr': 0.0,
-        'weight_decay': weight_decay,
-        'name': 'others_with_wd'
-    }, {
-        'params':
-        [p for n, p in params_to_optimize
-         if any(stop_word in n for stop_word in no_decay_list)],
-        'lr': 0.0,
-        'weight_decay': 0.0,
-        'name': 'others_with_no_wd'
-    }]
-    #optimizer_grouped_parameters.extend(groups)
+        optimizer_grouped_parameters = [{
+            'params': [
+                p for n, p in params_to_optimize
+                if not any(stop_word in n for stop_word in no_decay_list)
+            ],
+            'lr': 0.0,
+            'weight_decay': weight_decay,
+            'name': 'others_with_wd'
+        }, {
+            'params':
+            [p for n, p in params_to_optimize
+            if any(stop_word in n for stop_word in no_decay_list)],
+            'lr': 0.0,
+            'weight_decay': 0.0,
+            'name': 'others_with_no_wd'
+        }]
+        #optimizer_grouped_parameters.extend(groups)
 
-    return optimizer_grouped_parameters
+        return optimizer_grouped_parameters
 
 
 def prepare_model_optimizer(args):

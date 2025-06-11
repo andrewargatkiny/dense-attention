@@ -6,6 +6,7 @@ from src.other_models import (TransformerForPreTraining,
                               TransformerForRegression, TransformerConfig)
 from src.modeling import DANetForPreTraining, BertForSequenceClassification, BertForAANMatching, \
     BertForRegression
+from src.hf_modeling import HFForAANMatching, HFForPreTraining, HFForRegression, HFForSequenceClassification
 from src.other_models.bert_hf import BertHFForSequenceClassification
 from data.dataset import (LRADataset, LRATextDataset,
                           DatasetForMLM, TextDatasetForMLM, AANDataset,
@@ -187,6 +188,37 @@ class GluePretrainingMLM:
     dataset_type = GlueDatasetForMLM
     model_type = DANetForPreTraining
     eval_func = eval_mlm_classification_task
+#__________________________________________________
+
+@dataclass
+class HFSequenceClassification:
+    dataset_type = LRADataset
+    model_type = HFForSequenceClassification
+    eval_func = eval_classification_task
+
+@dataclass
+class HFTextClassification:
+    dataset_type = LRATextDataset
+    model_type = HFForSequenceClassification
+    eval_func = eval_classification_task
+
+@dataclass
+class HFTextsMatching:
+    dataset_type = AANDataset
+    model_type = HFForAANMatching
+    eval_func = eval_classification_task
+
+@dataclass
+class HFBertPretraining:
+    dataset_type = BertPretrainingDatasetFactory
+    model_type = HFForPreTraining
+    eval_func = eval_mlm_classification_task
+
+@dataclass
+class HFGlueForRegression:
+    dataset_type = GlueBertDataset
+    model_type = HFForRegression
+    eval_func = eval_regression_task
 
 
 class TaskRegistry:
@@ -229,3 +261,8 @@ TaskRegistry.register_task("glue_transformer_with_acc_metrics", GlueTransformerW
 TaskRegistry.register_task("glue_hf_with_acc_metrics", GlueHFWithAccMetrics)
 TaskRegistry.register_task("glue_transformer_with_all_metrics", GlueTransformerWithAllMetrics)
 TaskRegistry.register_task("glue_transformer_for_regression", GlueTransformerForRegression)
+TaskRegistry.register_task("hf_sequence_classification", HFSequenceClassification)
+TaskRegistry.register_task("hf_text_classification", HFTextClassification)
+TaskRegistry.register_task("hf_texts_matching", HFTextsMatching)
+TaskRegistry.register_task("hf_bert_pretraining", HFBertPretraining)
+TaskRegistry.register_task("hf_glue_for_regression", HFGlueForRegression)
