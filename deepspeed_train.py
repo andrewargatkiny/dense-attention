@@ -190,6 +190,8 @@ def train(args,
             #batch = pretrain_dataset_provider.get_batch(batch_index)
             batch = {name: t.to(args.device) for name, t in batch.items()}  # Move to GPU
             # Calculate forward pass
+            print("AAAAAAAAAAAAAA")
+            print(model.bert.model.config.max_position_embeddings)
             loss = model(**batch)
 
             unscaled_loss = loss.item()
@@ -726,8 +728,6 @@ def prepare_model_optimizer(args):
     print("VOCAB SIZE:", bert_config.vocab_size)
 
     model = model_class(bert_config, args)
-    #print(bert_config)
-    print(args.config["model_config"])
 
     # Optimizer parameters
     optimizer_grouped_parameters = prepare_optimizer_parameters(args, model)
