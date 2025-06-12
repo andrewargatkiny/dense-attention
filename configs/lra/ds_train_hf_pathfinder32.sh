@@ -58,7 +58,6 @@ NCCL_TREE_THRESHOLD=0 deepspeed --include localhost:"$NODE" --master_port "$MAST
 --task_type "hf_sequence_classification" \
 --output_dir $OUTPUT_DIR \
 --deepspeed \
---dense_attention \
 --eval_train_data \
 --eval_test_data \
 --max_validation_samples 20000 \
