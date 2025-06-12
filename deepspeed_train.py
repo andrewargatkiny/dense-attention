@@ -107,7 +107,6 @@ def get_dataloader(args, dataset: Dataset):
 def pretrain_validation(args, dataset, series_name, index, model):
 
     config = args.config
-    num_layers = config["model_config"]["num_hidden_layers"]
     logger = args.logger
     eval_bs = args.train_micro_batch_size_per_gpu * args.eval_bs_ratio
     max_validation_samples = args.max_validation_samples
@@ -118,6 +117,7 @@ def pretrain_validation(args, dataset, series_name, index, model):
     logger.info(
         f"Validation micro batch size: {eval_bs}")
     if args.dense_attention:
+        num_layers = config["model_config"]["num_hidden_layers"]
         update_weights_scalers(model, num_layers)
     model.eval()
 
@@ -160,7 +160,6 @@ def train(args,
 
     current_data_sample_count = global_data_samples
     rank = dist.get_rank()
-    num_layers = args.config["model_config"]["num_hidden_layers"]
 
     config = args.config
     logger = args.logger
@@ -178,6 +177,7 @@ def train(args,
     lr_this_step = config["training"]["learning_rate"]
     inner_optimizer = optimizer if not args.bf16 else optimizer.optimizer
     if args.dense_attention:
+        num_layers = args.config["model_config"]["num_hidden_layers"]
         update_weights_scalers(model, num_layers)
 
     for group in optimizer.param_groups:
