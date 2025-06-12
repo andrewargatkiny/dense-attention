@@ -630,7 +630,7 @@ def construct_arguments():
 
 
 def prepare_optimizer_parameters(args, model):
-    if hasattr(model, 'hf_config'):  # HF model detected
+    if hasattr(model.bert, 'hf_config'):  # HF model detected
         param_optimizer = list(model.named_parameters())
         no_decay = ['bias', 'LayerNorm.bias', 'LayerNorm.weight']
         return [
