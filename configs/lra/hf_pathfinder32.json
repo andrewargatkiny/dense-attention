@@ -1,0 +1,42 @@
+{
+    "name": "hf-pathfinder",
+    "model_config": {
+        "hf_model_name_or_path": "bert-base-uncased",
+        "num_labels": 2,
+        "hidden_dropout_prob": 0.1,
+        "vocab_size": 264
+    },
+    "data": {
+        "training": {
+            "inputs": "input/train.src",
+            "labels": "label/train.label"
+        },
+        "validation": {
+            "inputs": "input/valid.src",
+            "labels": "label/valid.label"
+        },
+        "test": {
+            "inputs": "input/test.src",
+            "labels": "label/test.label"
+        }
+    },
+    "training": {
+        "num_epochs": 210,
+        "lr_scheduler_params": {
+            "warmup_ratio": 0.1,
+            "warmup_degree": 1,
+            "degree": 0,
+            "one_cycle_steps": 320000
+        },
+        "lr_schedule": "cosine",
+        "lr_offset": 0.0,
+        "warmup_proportion": 0.02,
+        "learning_rate": 1e-3,
+        "weight_decay": 0.1,
+        "num_workers": 4,
+        "async_worker": true,
+        "decay_rate": 0.90,
+        "decay_step": 150,
+        "one_cycle_steps": 125000
+    }
+}
