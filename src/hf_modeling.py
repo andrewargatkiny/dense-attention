@@ -8,8 +8,9 @@ class HFBaseModel(DANetPreTrainedModel):
     """Core adapter that handles input/output conversion"""
     def __init__(self, config, args=None):
         super().__init__(config)
-        self.model = AutoModel.from_config(config.hf_config)
-        
+        self.hf_config = config.hf_config
+        self.model = AutoModel.from_config(self.hf_config)
+
     def forward(self, input_ids, attention_mask=None, token_type_ids=None):
         if token_type_ids is None:
             token_type_ids = torch.zeros_like(input_ids)
