@@ -4,7 +4,7 @@ base_dir=`pwd`
 SEED=${SEED:-100}
 NODE=${NODE:-0}
 MASTER_PORT=${MASTER_PORT:-29500}
-CONFIG=${CONFIG:-${base_dir}/configs/lra/dense_attn_pathfinder32.json}
+CONFIG=${CONFIG:-${base_dir}/configs/lra/hf_pathfinder32.json}
 DS_CONFIG=${DS_CONFIG:-${base_dir}/configs/lra/deepspeed_config_pathfinder32.json}
 TRACKING_SYSTEM=${TRACKING_SYSTEM:-clearml}
 

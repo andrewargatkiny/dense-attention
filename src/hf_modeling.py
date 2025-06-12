@@ -6,7 +6,7 @@ from src.modeling import DANetPreTrainedModel, ModelConfig, BertPreTrainingHeads
 
 class HFBaseModel(DANetPreTrainedModel):
     """Core adapter that handles input/output conversion"""
-    def __init__(self, config):
+    def __init__(self, config, args=None):
         super().__init__(config)
         self.model = AutoModel.from_config(config.hf_config)
         
@@ -29,7 +29,7 @@ class HFBaseModel(DANetPreTrainedModel):
 
 # Task-Specific Heads
 class HFForPreTraining(DANetPreTrainedModel):
-    def __init__(self, config):
+    def __init__(self, config, args=None):
         super().__init__(config)
         self.bert = HFBaseModel(config)
         self.cls = BertPreTrainingHeads(
@@ -74,7 +74,7 @@ class HFForPreTraining(DANetPreTrainedModel):
         return total_loss
 
 class HFForSequenceClassification(DANetPreTrainedModel):
-    def __init__(self, config):
+    def __init__(self, config, args=None):
         super().__init__(config)
         self.bert = HFBaseModel(config)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
@@ -97,7 +97,7 @@ class HFForSequenceClassification(DANetPreTrainedModel):
         return logits
 
 class HFForRegression(DANetPreTrainedModel):
-    def __init__(self, config):
+    def __init__(self, config, args=None):
         super().__init__(config)
         self.bert = HFBaseModel(config)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
@@ -120,7 +120,7 @@ class HFForRegression(DANetPreTrainedModel):
         return logits
 
 class HFForAANMatching(DANetPreTrainedModel):
-    def __init__(self, config):
+    def __init__(self, config, args=None):
         super().__init__(config)
         self.bert = HFBaseModel(config)
         self.dense = nn.Linear(config.hidden_size * 4, config.hidden_size)
