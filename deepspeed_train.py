@@ -2,6 +2,7 @@ import os
 import sys
 import time
 import logging
+import shutil
 
 import numpy as np
 import random
@@ -19,7 +20,7 @@ from utils.tasks import TaskRegistry
 from train_arguments import get_argument_parser, override_configs
 from utils.logger import Logger
 from utils.optimization import warmup_exp_decay_exp, cosine_poly_warmup_decay
-from train_utils import is_time_to_exit, master_process, TensorBoardWriter, WandBWriter
+from train_utils import is_time_to_exit, master_process, TensorBoardWriter, WandBWriter, manage_checkpoints
 
 from data.dataset_utils import ShardedDatasetWrapper, create_dataloader
 
@@ -871,6 +872,7 @@ def run(args, model, optimizer, start_epoch):
                     success = True
                 except Exception as ex:
                     print(ex)
+            manage_checkpoints(args.saved_model_path, args)
                     
 
         post = time.time()
@@ -886,6 +888,14 @@ def run(args, model, optimizer, start_epoch):
 def main():
     start = time.time()
     args = construct_arguments()
+    
+    # remember folders produced by previous runs
+    args.saved_model_path = os.path.join(args.output_dir, "saved_models", args.job_name)
+    preexist = set()
+    if os.path.isdir(args.saved_model_path):
+        preexist = {d for d in os.listdir(args.saved_model_path)
+                    if d.startswith("epoch")}
+    args.preexisting_checkpoints = preexist
     model, optimizer = prepare_model_optimizer(args)
     if master_process(args):
         os.makedirs(args.saved_model_path, exist_ok=True)
