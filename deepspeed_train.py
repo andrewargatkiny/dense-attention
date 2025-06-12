@@ -160,7 +160,7 @@ def train(args,
 
     current_data_sample_count = global_data_samples
     rank = dist.get_rank()
-    num_layers = config["model_config"]["num_hidden_layers"]
+    num_layers = args.config["model_config"]["num_hidden_layers"]
 
     config = args.config
     logger = args.logger
