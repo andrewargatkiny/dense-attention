@@ -211,6 +211,7 @@ class ModelConfig(object):
                 self.num_attention_heads = self.hf_config.num_attention_heads
                 self.num_hidden_layers = self.hf_config.num_hidden_layers
                 self.hidden_act = self.hf_config.hidden_act
+                self.hf_config.max_position_embedding = self.max_position_embeddings
                 self.vocab_size = self.hf_config.vocab_size
                 
             for key, value in kwargs.items():
