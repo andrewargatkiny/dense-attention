@@ -726,7 +726,7 @@ def prepare_model_optimizer(args):
     print("VOCAB SIZE:", bert_config.vocab_size)
 
     model = model_class(bert_config, args)
-    print(bert_config)
+    #print(bert_config)
     print(args.config["model_config"])
 
     # Optimizer parameters
