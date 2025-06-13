@@ -578,14 +578,14 @@ def get_arguments():
 
 def construct_arguments():
     args = get_arguments()
-    # Overriding parameters in configs
-    if args.override:
-        override_configs(args)
     # Prepare Logger
     logger = Logger(cuda=torch.cuda.is_available() and not args.no_cuda)
     args.logger = logger
     config = json.load(open(args.config_file, 'r', encoding='utf-8'))
     args.config = config
+    # Overriding parameters in configs
+    if args.override:
+        override_configs(args)
     if args.model_config_file and args.model_config_file != args.config_file:
         model_config = json.load(
             open(args.model_config_file, 'r', encoding='utf-8')
@@ -633,8 +633,8 @@ def construct_arguments():
 
 def prepare_optimizer_parameters(args, model):
     config = args.config
-    deepspeed_config = json.load(
-        open(args.deepspeed_config, 'r', encoding='utf-8'))
+    # deepspeed_config = json.load(
+    #     open(args.deepspeed_config, 'r', encoding='utf-8'))
     params_to_optimize = list(model.named_parameters())
     #params_to_optimize = [n for n in params_to_optimize if #'pooler' not in n[0] and
     #                   'embeddings' not in n[0] and 'layer' not in n[0]]

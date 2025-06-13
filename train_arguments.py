@@ -1,19 +1,7 @@
 import sys
 import argparse
 import json
-import logging
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-    handlers=[
-        logging.FileHandler("app.log", encoding="utf-8"),
-        logging.StreamHandler(sys.stdout),
-    ],
-    force=True
-)
-logger = logging.getLogger(__name__)
    
 def get_argument_parser():
     parser = argparse.ArgumentParser()
@@ -396,9 +384,13 @@ def get_argument_parser():
     parser.add_argument(
         '--override',
         type=str,
-        default=None,
-        nargs='+',
-        help='Override model and deepspeed configs parameters'
+        default=[],
+        nargs='*',
+        help='Override parameters for config files. Accepts values in the form '
+             '"cf.key=val" or "ds.key=val" to override nested values in the model (cf) '
+             'or deepspeed (ds) configs. For nested keys, use dot notation: '
+             'key = key1.key2.key3.'
+        
     )
 
     return parser
@@ -416,10 +408,7 @@ def parse_override_string(config_paths: dict, override: str):
     key_path = override[first_dot + 1:end_eq]
     value = override[end_eq + 1:]
     
-    logger.info(
-        "Parsed override: cfg_name=%s, key_path=%s, value=%s",
-        config_paths[cfg_name], key_path, value
-    )
+    print(f"Parsed override: cfg_name={config_paths[cfg_name]}, key_path={key_path}, value={value}")
     return (cfg_name, key_path, value)
 
 def set_nested_checked(config_dict: dict, key_path: str, value):
@@ -438,7 +427,7 @@ def set_nested_checked(config_dict: dict, key_path: str, value):
         raise KeyError(f"The final key '{final_key}' does not exist in '{key_path}'")
 
     target_dict[final_key] = value
-    logger.info("Set %s = %r", key_path, value)
+    print(f"Set {key_path} = {value}")
     
 def parse_value(val: str):
     """Parse a string value into a JSON type if possible, otherwise return as string.
@@ -457,14 +446,6 @@ def apply_overrides(configs: dict[str, dict], overrides: list[tuple[str, str, st
         value = parse_value(raw_value)
         set_nested_checked(configs[cfg_name], key_path, value)
 
-def save_configs(configs: dict[str, dict], paths: dict[str, str]):
-    """Save each configuration dictionary back to its file path in JSON format.
-    """
-    for name, data in configs.items():
-        with open(paths[name], 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
-        logger.info("Saved config to '%s'", paths[name])
-
 def override_configs(args):
     """Load, apply overrides, and save configuration files based on CLI arguments.
     """
@@ -477,9 +458,13 @@ def override_configs(args):
     for name, path in config_paths.items():
         with open(path, 'r', encoding='utf-8') as f:
             configs[name] = json.load(f)
-            logger.info("Loaded config '%s' from %s", name, path)
-            
+            print("Loaded config '{name}' from {path}")
+
     overrides = [parse_override_string(config_paths, ovr) for ovr in args.override]
-    
     apply_overrides(configs, overrides)
-    save_configs(configs, config_paths)
+    args.config = configs['cf']
+    args.deepspeed_config = configs['ds']
+    print("Args updated: args.config and args.deepspeed_config now hold dicts")
+
+    return args
+    

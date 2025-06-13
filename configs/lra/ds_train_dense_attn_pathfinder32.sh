@@ -1,10 +1,5 @@
 #!/bin/bash
 
-params=""
-if [ $# -ne 0 ]; then
-    params="$*"
-fi
-
 base_dir=`pwd`
 SEED=${SEED:-100}
 NODE=${NODE:-0}
@@ -20,6 +15,7 @@ BASE_JOB_NAME="lra_pathfinder_32"
 : "${BASE_DATA_DIR:=${base_dir}/data}"
 CHECKPOINT_BASE_PATH=""
 CHECKPOINT_EPOCH_NAME=""
+OVERRIDE_ARGS=()
 
 if [ "${1-}" = "--resume" ]; then
   shift
@@ -33,7 +29,11 @@ if [ "${1-}" = "--resume" ]; then
   fi
 
   [ $# -ge 1 ] || { echo "Usage: $0 --resume [EPOCH|last] JOB_NAME"; exit 1; }
-  SUBDIR=$1
+  SUBDIR=$1; shift
+
+  if [ "${1-}" = "--override" ]; then
+    OVERRIDE_ARGS=( "${@:2}" )
+  fi
 
   CHECKPOINT_BASE_PATH="${OUTPUT_DIR}/saved_models/${SUBDIR}"
 
@@ -53,6 +53,10 @@ else
   # Set up for initial training
   DATESTAMP=$(date +'%Y-%m-%d_%H-%M')
   JOB_NAME="${BASE_JOB_NAME}_${DATESTAMP}"
+fi
+
+if [ "${1-}" = "--override" ]; then
+  OVERRIDE_ARGS=( "${@:2}" )
 fi
 
 mkdir -p $OUTPUT_DIR
@@ -80,5 +84,5 @@ NCCL_TREE_THRESHOLD=0 deepspeed --include localhost:"$NODE" --master_port "$MAST
 --keep_last_ckpts 3 \
 --ckpt_to_save 1 \
 --project_name "lra-pathfinder-32" \
---override $params \
+--override ${OVERRIDE_ARGS[@]} \
 &> ${JOB_NAME}.log
