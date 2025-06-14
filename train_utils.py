@@ -3,6 +3,7 @@ import sys
 import argparse
 import time
 import math
+import json
 
 import matplotlib.pyplot as plt
 from scipy.stats import pearsonr, spearmanr
@@ -46,13 +47,15 @@ class WandBWriter:
                  args, 
                  base: str = "..",
                  ):
+        deepspeed_config = json.load(
+          open(args.deepspeed_config, 'r', encoding='utf-8'))
         self.run = wandb.init(
             project=name,
             name="research",
             config={
                           **vars(args),
                           "bert_config": args.config,
-                          "deepspeed_config": args.deepspeed_config
+                          "deepspeed_config": deepspeed_config
                       }
         )
         

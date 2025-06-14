@@ -16,3 +16,5 @@ zstandard
 nltk
 tensorboardX==2.6.1
 clearml
+wandb
+matplotlib
