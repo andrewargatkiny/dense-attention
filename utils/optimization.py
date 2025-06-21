@@ -98,9 +98,10 @@ def linear_warmup_cosine_decay(
     (duration of decay as a fraction of steps after warmup),
     T_cur = steps since cycle start / one_cycle_steps - warmup_ratio.
     """
+    # x is ratio os steps since cycle start to the cycle length in steps.
     x = (global_step % one_cycle_steps) / one_cycle_steps
     if x < warmup_ratio:
-        return x / warmup_ratio
+        return min_lr + (max_lr - min_lr) * x / warmup_ratio
     x = (x - warmup_ratio) / (1 - warmup_ratio)
     return min_lr + 0.5 * (max_lr - min_lr) * (1 + math.cos(x * math.pi))
 

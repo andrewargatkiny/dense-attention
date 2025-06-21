@@ -339,10 +339,9 @@ def update_learning_rate(args, config, current_global_step, optimizer):
                 global_step_for_lr, **config["training"]["lr_scheduler_params"]
         )
     elif lr_schedule == "true_cosine":
-        lr_this_step = config["training"][
-            "learning_rate"] * linear_warmup_cosine_decay(
+        lr_this_step = linear_warmup_cosine_decay(
                 global_step_for_lr, **config["training"]["lr_scheduler_params"]
-            )
+        )
 
     elif lr_schedule == 'constant':
         lr_this_step = config["training"]["learning_rate"]
