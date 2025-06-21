@@ -19,7 +19,7 @@ from src.model_config import ModelConfig
 from utils.tasks import TaskRegistry
 from train_arguments import get_argument_parser, override_configs
 from utils.logger import Logger
-from utils.optimization import warmup_exp_decay_exp, cosine_poly_warmup_decay
+from utils.optimization import warmup_exp_decay_exp, cosine_poly_warmup_decay, linear_warmup_cosine_decay
 from train_utils import is_time_to_exit, master_process, TensorBoardWriter, WandBWriter, manage_checkpoints
 
 from data.dataset_utils import ShardedDatasetWrapper, create_dataloader
@@ -330,12 +330,20 @@ def update_learning_rate(args, config, current_global_step, optimizer):
                 config["training"]["decay_step"],
                 config["training"]["one_cycle_steps"],
                 config["training"]["warmup_proportion"])
+    # Due to historic reasons, this option is called cosine,
+    # but it's really polynomial warmup, polynomial decay.
     elif lr_schedule == "cosine":
         #print(f'LR Schedule is {args.lr_schedule} EP')
         lr_this_step = config["training"][
             "learning_rate"] * cosine_poly_warmup_decay(
                 global_step_for_lr, **config["training"]["lr_scheduler_params"]
         )
+    elif lr_schedule == "true_cosine":
+        lr_this_step = config["training"][
+            "learning_rate"] * linear_warmup_cosine_decay(
+                global_step_for_lr, **config["training"]["lr_scheduler_params"]
+            )
+
     elif lr_schedule == 'constant':
         lr_this_step = config["training"]["learning_rate"]
     else:

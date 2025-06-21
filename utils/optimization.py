@@ -80,6 +80,31 @@ def cosine_poly_warmup_decay(global_step,
         return (x / warmup_ratio)**warmup_degree
     return (1.0 - (x - warmup_ratio) / (1 - warmup_ratio))**degree
 
+def linear_warmup_cosine_decay(
+        global_step,
+        one_cycle_steps,
+        max_lr,
+        min_lr=0,
+        warmup_ratio=0,
+):
+    """
+    learning rate schedule with linear warmup and classical cosine decay
+    (without cycle increases). It returns actual learning rate instead of
+    fraction of max learning rate from 0 to 1 as in other functions.
+    The latter part follows the formula from the orig paper
+    https://arxiv.org/abs/1608.03983:
+    eta_t = eta_min + 0.5 * (eta_max - eta_min) * (1 + cos((T_cur / T_max) * pi)),
+    where eta_min = `min_lr`, eta_max = `max_lr`, T_max = `1 - warmup_ratio`
+    (duration of decay as a fraction of steps after warmup),
+    T_cur = steps since cycle start / one_cycle_steps - warmup_ratio.
+    """
+    x = (global_step % one_cycle_steps) / one_cycle_steps
+    if x < warmup_ratio:
+        return x / warmup_ratio
+    x = (x - warmup_ratio) / (1 - warmup_ratio)
+    return min_lr + 0.5 * (max_lr - min_lr) * (1 + math.cos(x * math.pi))
+
+
 
 SCHEDULES = {
     'warmup_cosine': warmup_cosine,
