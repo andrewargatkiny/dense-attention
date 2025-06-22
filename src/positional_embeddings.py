@@ -95,8 +95,8 @@ class RoPE(RelPEBase):
             n_elem_rope = n_elem_rope - n_elem_rope % 2
             theta_rope = 1.0 / (base ** (torch.arange(0, n_elem_rope, 2)
                                          / n_elem_rope))
-            theta = torch.ones(size=(n_elem,))
-            theta[:n_elem_rope] = theta_rope
+            theta = torch.ones(size=(n_elem // 2,))
+            theta[:n_elem_rope // 2] = theta_rope
 
         # Create position indexes `[0, 1, ..., seq_len - 1]`
         seq_idx = torch.arange(seq_len)
