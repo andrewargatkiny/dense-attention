@@ -153,7 +153,8 @@ class ShardedDatasetWrapper:
         if self.use_hf_dataset:
             print(f"rank {self.global_rank} "
                   f"dataset name {self.dataset_config['hf_dataset_name']} "
-                  f"offset {self.current_offset}")
+                  f"subset {self.dataset_config.get('hf_dataset_subset')}, "
+                  f"offset {self.current_offset} entries {self.hf_chunk_size}")
             return
         for i in range(0, self.num_files // 4):
             print(f"rank {self.global_rank} {i}-th foursome of files: {self.dataset_files[4 * i:4 * (i + 1)]}")
@@ -170,7 +171,7 @@ class ShardedDatasetWrapper:
         dataset_config = copy.deepcopy(self.dataset_config)
         offset_or_datafile = self._get_shard_file(index)
         if self.use_hf_dataset:
-            dataset_config["hf_offset"] = offset_or_datafile
+            dataset_config["offset"] = offset_or_datafile
             dataset_config["hf_chunk_size"] = self.hf_chunk_size
             dataset_config["world_size"] = self.world_size
             dataset_config["global_rank"] = self.global_rank
