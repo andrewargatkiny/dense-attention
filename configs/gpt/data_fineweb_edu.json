@@ -4,10 +4,10 @@
             "hf_dataset_name": "HuggingFaceFW/fineweb-edu",
             "hf_dataset_subset": null,
             "hf_dataset_split": "train",
-            "hf_chunk_size": 65636,
+            "hf_chunk_size": 131072,
             "filter_geq_column": "text",
             "filter_geq_value": 50,
-            "total_samples": 65636,
+            "total_samples": 65536,
             "max_seq_length": 2048,
             "tokenizer_name": "openai-community/gpt2",
             "pad_samples": false
@@ -28,8 +28,8 @@
             "hf_dataset_subset": "sample-10BT",
             "hf_dataset_split": "train",
             "offset": 10000,
-            "hf_chunk_size": 65636,
-            "total_samples": 65636,
+            "hf_chunk_size": 131072,
+            "total_samples": 65536,
             "max_seq_length": 2048,
             "tokenizer_name": "openai-community/gpt2",
             "pad_samples": false

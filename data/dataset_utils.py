@@ -65,7 +65,7 @@ def load_hf_dataset(dataset_config: dict) -> datasets.IterableDataset:
     ds = datasets.load_dataset(
         dataset_config["hf_dataset_name"],
         dataset_config["hf_dataset_subset"],
-        dataset_config.get("hf_dataset_split", "train"),
+        split=dataset_config.get("hf_dataset_split", "train"),
         streaming=True
     ).shard(
         # Handle distributed training

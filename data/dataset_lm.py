@@ -575,6 +575,7 @@ class GPTPretrainingDataset(Dataset):
             random.seed(self.seed)
             torch.manual_seed(self.seed)
             np.random.seed(self.seed)
+        self.shuffle = dataset_config.get("shuffle", True)
         self.pad_samples = dataset_config.get("pad_samples", False)
         self.tokenizer_name = dataset_config.get("tokenizer_name",
                                             "openai-community/gpt2")
@@ -587,9 +588,15 @@ class GPTPretrainingDataset(Dataset):
         self.total_samples = dataset_config.get("total_samples", 2**19)
 
         if "hf_dataset_name" in dataset_config:
+            print(time.ctime(), f"Started loading data from HuggingFace "
+                                f"{dataset_config['hf_dataset_name']} dataset, "
+                                f"offset {dataset_config['offset']}")
             ds = load_hf_dataset(dataset_config)
-            f = lambda example: example["text"].strip() + self.tokenizer.eos_token
-            ds = ds.map(f)
+            eos_token = self.tokenizer.eos_token
+            def strip_add_eos_tok(example):
+                example["text"] = example["text"].strip() + eos_token
+                return example
+            ds = ds.map(strip_add_eos_tok)
             all_sentences = [example["text"] for example in ds]
             del ds
             base_name = f"offset_{dataset_config['offset']:012}"
@@ -614,6 +621,10 @@ class GPTPretrainingDataset(Dataset):
             df['text'] = df['text'].str.strip() + self.tokenizer.eos_token #replace('\n', ' ')
             all_sentences = df['text'].tolist()
             del df
+
+        if self.shuffle:
+            print(time.ctime(), f"Started shuffling")
+            random.shuffle(all_sentences)
 
         if self.pad_samples:
             self._init_padded_dataset(all_sentences)
