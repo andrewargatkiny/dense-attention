@@ -11,6 +11,10 @@ MASTER_PORT=${MASTER_PORT:-29500}
 CONFIG=${CONFIG:-${base_dir}/configs/gpt/gpt_360m_relpe_bf16.json}
 DS_CONFIG=${DS_CONFIG:-${base_dir}/configs/gpt/deepspeed_config_2k_bf16.json}
 
+MODEL_CONFIG=${MODEL_CONFIG:-"$CONFIG"}
+DATA_CONFIG=${DATA_CONFIG:-"$CONFIG"}
+TRAINING_CONFIG=${TRAINING_CONFIG:-"$CONFIG"}
+
 # Default values
 : "${BASE_DATA_DIR:=${base_dir}/data}"
 CHECKPOINT_BASE_PATH=""
@@ -50,6 +54,9 @@ mkdir -p $OUTPUT_DIR
 
 NCCL_TREE_THRESHOLD=0 deepspeed --master_port "$MASTER_PORT" ${base_dir}/deepspeed_train.py \
 --cf "$CONFIG" \
+--model_config_file "$MODEL_CONFIG" \
+--data_config_file "$DATA_CONFIG" \
+--train_config_file "$TRAINING_CONFIG" \
 --output_dir $OUTPUT_DIR \
 --task_type "gpt_pretraining" \
 --use_sharded_dataset \
