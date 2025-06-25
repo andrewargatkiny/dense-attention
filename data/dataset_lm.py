@@ -19,6 +19,9 @@ from collections import deque, namedtuple
 from tqdm import tqdm
 from transformers import BertTokenizerFast, AutoTokenizer
 
+from data.dataset_utils import load_hf_dataset
+
+
 def BertPretrainingDatasetFactory(base_dir, dataset_config, args=None):
     input_file = os.path.join(base_dir, dataset_config["input_file"])
     if os.path.splitext(input_file)[-1] == ".hdf5":
@@ -557,109 +560,11 @@ class BertOnlyMLMDataset(Dataset):
         }
 
 
-class GPTPretrainingPaddedDataset(Dataset):
-    """
-    Dataset for GPT pretraining which constructs sequences and masks in online
-    fashion. It holds at maximum one text in one sample and adds padding tokens
-     if the text length is less than max_seq_length. An exception will be
-     raised if number of produced samples is less than `total_samples`.
-    """
-    def __init__(self, base_dir, dataset_config, args=None):
-        super().__init__()
-        print(time.ctime(), f"Started initializing {self.__class__.__name__}")
-
-        self.seed = dataset_config.get("seed", None)
-        if self.seed is not None:
-            random.seed(self.seed)
-            torch.manual_seed(self.seed)
-            np.random.seed(self.seed)
-
-        file_path = os.path.join(base_dir, dataset_config["input_file"])
-
-        tokenizer_name = dataset_config.get("tokenizer_name",
-                                            "openai-community/gpt2")
-        self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name,
-                                                       use_fast=True)
-        self.tokenizer.pad_token = self.tokenizer.eos_token
-
-        self.vocab_size = self.tokenizer.vocab_size
-
-        self.max_seq_len = dataset_config.get("max_seq_length", 512)
-        self.short_seq_prob = dataset_config.get("short_seq_prob", 0.1)
-
-        self.masked_lm_ratio = dataset_config.get("masked_lm_ratio", 0.15)
-        self.p_mask_token = dataset_config.get("p_mask_token", 0.8)
-        self.true_mask_thr = self.masked_lm_ratio * self.p_mask_token
-        # p_mask_token + (1 - p_mask_token / 2) = 0.5 + p_mask_token / 2
-        self.random_mask_thr = self.masked_lm_ratio * (0.5 + self.p_mask_token / 2)
-        self.same_dataset_pairs = dataset_config.get("same_dataset_pairs", False)
-        self.total_samples = dataset_config.get("total_samples", 2**19)
-
-        base_name, ext = os.path.splitext(file_path)
-        if ext == ".hdf5":
-            print(time.ctime(), f"Started loading data from hdf5 file "
-                                f"{file_path}")
-            with h5py.File(file_path, 'r') as f:
-                self.input_ids = torch.tensor(f['input_ids'][:],
-                                              dtype=torch.int32)
-                self.masked_lm_labels = torch.tensor(f['masked_lm_labels'][:],
-                                                     dtype=torch.long)
-            print(time.ctime(), f"Finished initializing "
-                                f"{self.__class__.__name__}")
-            return
-
-        print(time.ctime(), f"Started Building documents from {file_path}")
-        df = pd.read_json(file_path, lines=True)
-        print(time.ctime(), f"Started basic preprocessing")
-        df['text'] = df['text'].str.replace('\n', ' ')
-        all_sentences = df['text'].tolist()
-        del df
-        assert len(all_sentences) >= self.total_samples, \
-            (f"There is not enough samples in the dataset. Present: "
-             f"{len(all_sentences)}, required: {self.total_samples}.")
-        all_sentences = all_sentences[:self.total_samples]
-        print(f"First sequence: {all_sentences[0]}")
-        print(time.ctime(), f"Started tokenization")
-        all_tokens = self.tokenizer(
-            all_sentences,
-            add_special_tokens=True,
-            padding=True,
-            truncation=True,
-            max_length=self.max_seq_len + 1,
-            return_attention_mask=True,
-            return_tensors='pt',
-            return_token_type_ids=False
-        )
-        print(time.ctime(), f"Started Building in-memory tensor dataset.")
-        self.input_ids: torch.Tensor = all_tokens["input_ids"][:, :-1]
-        self.masked_lm_labels: torch.Tensor = all_tokens["input_ids"][:, 1:]
-        self.input_mask = all_tokens["attention_mask"][:, :-1]
-        self.masked_lm_labels = self.masked_lm_labels.where(
-            self.input_ids != self.tokenizer.pad_token_id, -1
-        )
-        print(f"First sequence's input_ids: {self.input_ids[0]}, "
-              f"masked_lm_labels {self.masked_lm_labels[0]}, "
-              f"self.input_mask{self.input_mask[0]}")
-        print(f"Lengths of inputs are {self.input_ids.shape[-1]}")
-        print(time.ctime(), f"Finished initializing {self.__class__.__name__}")
-
-
-    def __len__(self):
-        return self.total_samples
-
-    def __getitem__(self, idx):
-        return {
-            "input_ids": self.input_ids[idx],
-            "attention_mask": self.input_mask[idx],
-            "masked_lm_labels": self.masked_lm_labels[idx],
-        }
-
 class GPTPretrainingDataset(Dataset):
     """
     Dataset for GPT pretraining which constructs sequences and masks in online
-    fashion. It can hold several texts in one sample separated by `eos` token.
-    If the text length is less than max_seq_length. An exception will be
-    raised if number of produced samples is less than `total_samples`.
+    fashion. An exception will be raised if number of produced samples is less
+    than `total_samples`.
     """
     def __init__(self, base_dir, dataset_config, args=None):
         super().__init__()
@@ -670,12 +575,10 @@ class GPTPretrainingDataset(Dataset):
             random.seed(self.seed)
             torch.manual_seed(self.seed)
             np.random.seed(self.seed)
-
-        file_path = os.path.join(base_dir, dataset_config["input_file"])
-
-        tokenizer_name = dataset_config.get("tokenizer_name",
+        self.pad_samples = dataset_config.get("pad_samples", False)
+        self.tokenizer_name = dataset_config.get("tokenizer_name",
                                             "openai-community/gpt2")
-        self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name,
+        self.tokenizer = AutoTokenizer.from_pretrained(self.tokenizer_name,
                                                        use_fast=True)
         self.tokenizer.pad_token = self.tokenizer.eos_token
         self.vocab_size = self.tokenizer.vocab_size
@@ -683,26 +586,61 @@ class GPTPretrainingDataset(Dataset):
         self.max_seq_len = dataset_config.get("max_seq_length", 2048)
         self.total_samples = dataset_config.get("total_samples", 2**19)
 
-        base_name, ext = os.path.splitext(file_path)
-        if ext == ".hdf5":
-            print(time.ctime(), f"Started loading data from hdf5 file "
-                                f"{file_path}")
-            with h5py.File(file_path, 'r') as f:
-                self.input_ids = torch.tensor(f['input_ids'][:],
-                                              dtype=torch.int32)
-                self.masked_lm_labels = torch.tensor(f['masked_lm_labels'][:],
-                                                     dtype=torch.long)
-            print(time.ctime(), f"Finished initializing "
-                                f"{self.__class__.__name__}")
-            return
+        if "hf_dataset_name" in dataset_config:
+            ds = load_hf_dataset(dataset_config)
+            f = lambda example: example["text"].strip() + self.tokenizer.eos_token
+            ds = ds.map(f)
+            all_sentences = [example["text"] for example in ds]
+            del ds
+            base_name = f"offset_{dataset_config['offset']:012}"
+        else:
+            file_path = os.path.join(base_dir, dataset_config["input_file"])
+            base_name, ext = os.path.splitext(file_path)
+            if ext == ".hdf5":
+                print(time.ctime(), f"Started loading data from hdf5 file "
+                                    f"{file_path}")
+                with h5py.File(file_path, 'r') as f:
+                    self.input_ids = torch.tensor(f['input_ids'][:],
+                                                  dtype=torch.int32)
+                    self.masked_lm_labels = torch.tensor(f['masked_lm_labels'][:],
+                                                         dtype=torch.long)
+                print(time.ctime(), f"Finished initializing "
+                                    f"{self.__class__.__name__}")
+                return
 
-        print(time.ctime(), f"Started Building documents from {file_path}")
-        df = pd.read_json(file_path, lines=True)
-        print(time.ctime(), f"Started basic preprocessing")
-        df['text'] = df['text'].str.strip() + self.tokenizer.eos_token #replace('\n', ' ')
-        all_sentences = df['text'].tolist()
-        del df
+            print(time.ctime(), f"Started Building documents from {file_path}")
+            df = pd.read_json(file_path, lines=True)
+            print(time.ctime(), f"Started basic preprocessing")
+            df['text'] = df['text'].str.strip() + self.tokenizer.eos_token #replace('\n', ' ')
+            all_sentences = df['text'].tolist()
+            del df
 
+        if self.pad_samples:
+            self._init_padded_dataset(all_sentences)
+        else:
+            self._init_unpadded_dataset(all_sentences)
+
+        if dataset_config.get("save", False):
+            with h5py.File(f'{base_name}.hdf5', 'w') as f:
+                print(time.ctime(), f"Started saving to disk")
+                f.create_dataset('input_ids', data=self.input_ids.numpy(),
+                                 dtype='i4', compression='gzip')
+                f.create_dataset('masked_lm_labels',
+                                 data=self.masked_lm_labels.numpy(),
+                                 dtype='i4', compression='gzip')
+                if self.pad_samples:
+                    f.create_dataset('input_mask',
+                                     data=self.input_mask.numpy(),
+                                     dtype='i1', compression='gzip')
+
+                print(time.ctime(), f"Finished saving to disk")
+
+    def _init_unpadded_dataset(self, all_sentences: List[str]):
+        """
+        Creates dataset which can hold several text documents in one sample
+        separated by `eos` token if a single text length is less than
+        `max_seq_length`. Documents can span sample boundaries and vice versa.
+        """
         print(f"First sequence: {all_sentences[0]}")
         print(time.ctime(), f"Started tokenization")
         all_seqs = []
@@ -724,7 +662,7 @@ class GPTPretrainingDataset(Dataset):
             )
         all_ids = []
         del self.tokenizer
-        self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name,
+        self.tokenizer = AutoTokenizer.from_pretrained(self.tokenizer_name,
                                                        use_fast = True)
         for seq in all_seqs:
             all_ids.extend(seq)
@@ -750,15 +688,40 @@ class GPTPretrainingDataset(Dataset):
         print(f"Lengths of inputs are {self.input_ids.shape[-1]}")
         print(time.ctime(), f"Finished initializing {self.__class__.__name__}")
 
-        if dataset_config.get("save", False):
-            with h5py.File(f'{base_name}.hdf5', 'w') as f:
-                print(time.ctime(), f"Started saving to disk")
-                f.create_dataset('input_ids', data=self.input_ids.numpy(),
-                                 dtype='i4', compression='gzip')
-                f.create_dataset('masked_lm_labels',
-                                 data=self.masked_lm_labels.numpy(),
-                                 dtype='i4', compression='gzip')
-                print(time.ctime(), f"Finished saving to disk")
+
+    def _init_padded_dataset(self, all_sentences):
+        """
+        Creates dataset which holds at maximum one text in one sample and adds
+        padding tokens if the text length is less than max_seq_length.
+        """
+        assert len(all_sentences) >= self.total_samples, \
+            (f"There is not enough samples in the dataset. Present: "
+             f"{len(all_sentences)}, required: {self.total_samples}.")
+        all_sentences = all_sentences[:self.total_samples]
+        print(f"First sequence: {all_sentences[0]}")
+        print(time.ctime(), f"Started tokenization")
+        all_tokens = self.tokenizer(
+            all_sentences,
+            add_special_tokens=True,
+            padding=True,
+            truncation=True,
+            max_length=self.max_seq_len + 1,
+            return_attention_mask=True,
+            return_tensors='pt',
+            return_token_type_ids=False
+        )
+        print(time.ctime(), f"Started Building in-memory tensor dataset.")
+        self.input_ids: torch.Tensor = all_tokens["input_ids"][:, :-1]
+        self.masked_lm_labels: torch.Tensor = all_tokens["input_ids"][:, 1:]
+        self.input_mask = all_tokens["attention_mask"][:, :-1]
+        self.masked_lm_labels = self.masked_lm_labels.where(
+            self.input_ids != self.tokenizer.pad_token_id, -1
+        )
+        print(f"First sequence's input_ids: {self.input_ids[0]}, "
+              f"masked_lm_labels {self.masked_lm_labels[0]}, "
+              f"self.input_mask {self.input_mask[0]}")
+        print(f"Lengths of inputs are {self.input_ids.shape[-1]}")
+        print(time.ctime(), f"Finished initializing {self.__class__.__name__}")
 
     def __len__(self):
         return self.total_samples
