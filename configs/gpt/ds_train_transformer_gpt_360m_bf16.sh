@@ -69,7 +69,6 @@ NCCL_TREE_THRESHOLD=0 deepspeed --master_port "$MASTER_PORT" ${base_dir}/deepspe
 --ckpt_to_save 1 \
 --keep_last_ckpts 1 \
 --keep_ckpt_epochs "14" \
---log_activations \
 --seed "$SEED" \
 --job_name $JOB_NAME \
 --deepspeed_config "$DS_CONFIG" \

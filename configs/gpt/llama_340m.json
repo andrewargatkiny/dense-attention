@@ -26,8 +26,8 @@
             "hf_dataset_name": "HuggingFaceFW/fineweb-edu",
             "hf_dataset_subset": "sample-100BT",
             "hf_dataset_split": "train",
-            "hf_chunk_size": 300000,
-            "total_samples": 65536,
+            "hf_chunk_size": 600000,
+            "total_samples": 131072,
             "max_seq_length": 4096,
             "tokenizer_name": "huggyllama/llama-7b",
             "pad_samples": false
@@ -64,7 +64,7 @@
             "one_cycle_steps": 28672
         },
         "lr_schedule": "true_cosine",
-        "lr_offset": 0.00004,
+        "lr_offset": 0,
         "learning_rate": 4e-4,
         "weight_decay": 0.1,
         "num_workers": 4
