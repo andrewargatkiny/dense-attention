@@ -395,7 +395,13 @@ def get_argument_parser():
 
     return parser
 
-def parse_override_string(config_paths: dict, override: str):
+
+"""
+Configuration override implementation.
+Inspired by the implementation in the flame project:
+https://github.com/fla-org/flame
+"""
+def parse_override_string(override: str):
     """Parse a single override string in the format 'cf.key=value' or 'ds.key=value'.
     """
     first_dot = override.find('.')
@@ -408,7 +414,7 @@ def parse_override_string(config_paths: dict, override: str):
     key_path = override[first_dot + 1:end_eq]
     value = override[end_eq + 1:]
     
-    print(f"Parsed override: cfg_name={config_paths[cfg_name]}, key_path={key_path}, value={value}")
+    print(f"Parsed override: key_path={key_path}, value={value}")
     return (cfg_name, key_path, value)
 
 def set_nested_checked(config_dict: dict, key_path: str, value):
@@ -449,21 +455,13 @@ def apply_overrides(configs: dict[str, dict], overrides: list[tuple[str, str, st
 def override_configs(args):
     """Load, apply overrides, and save configuration files based on CLI arguments.
     """
-    config_paths = {
-        "cf": args.config_file,
+    configs = {
+        "cf": args.config,
         "ds": args.deepspeed_config
     }
-    configs = {}
     
-    for name, path in config_paths.items():
-        with open(path, 'r', encoding='utf-8') as f:
-            configs[name] = json.load(f)
-            print("Loaded config '{name}' from {path}")
-
-    overrides = [parse_override_string(config_paths, ovr) for ovr in args.override]
+    overrides = [parse_override_string(ovr) for ovr in args.override]
     apply_overrides(configs, overrides)
-    args.config = configs['cf']
-    args.deepspeed_config = configs['ds']
     print("Args updated: args.config and args.deepspeed_config now hold dicts")
 
     return args
