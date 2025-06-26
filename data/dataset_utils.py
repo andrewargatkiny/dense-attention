@@ -72,8 +72,9 @@ def load_hf_dataset(dataset_config: dict) -> datasets.IterableDataset:
         dataset_config.get("world_size", 1),
         dataset_config.get("global_rank", 0)
     ).skip(dataset_config["offset"]).take(dataset_config["hf_chunk_size"])
-    if "code" in ds.features:
-        ds = ds.rename_column("code", TEXT_COLUMN)
+    for name in ['code', 'page']:
+        if name in ds.features:
+            ds = ds.rename_column(name, TEXT_COLUMN)
     # Optionally choose only entries where some columns are geq or
     # leq than some values.
     if "filter_geq_column" in dataset_config:
