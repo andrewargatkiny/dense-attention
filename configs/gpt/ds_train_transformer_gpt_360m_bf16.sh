@@ -8,8 +8,8 @@ BASE_JOB_NAME="gpt_pretraining"
 SEED=${SEED:-42}
 #NODE=${NODE:-0}
 MASTER_PORT=${MASTER_PORT:-29500}
-CONFIG=${CONFIG:-${base_dir}/configs/gpt/gpt_transformer_360m.json}
-DS_CONFIG=${DS_CONFIG:-${base_dir}/configs/gpt/deepspeed_transformer_2k.json}
+CONFIG=${CONFIG:-${base_dir}/configs/gpt/llama340m.json}
+DS_CONFIG=${DS_CONFIG:-${base_dir}/configs/gpt/deepspeed_transformer_4k.json}
 
 MODEL_CONFIG=${MODEL_CONFIG:-"$CONFIG"}
 DATA_CONFIG=${DATA_CONFIG:-"$CONFIG"}
@@ -63,10 +63,12 @@ NCCL_TREE_THRESHOLD=0 deepspeed --master_port "$MASTER_PORT" ${base_dir}/deepspe
 --deepspeed \
 --only_mlm_task \
 --use_torch_compile \
---no_eval_val_data \
 --eval_test_data \
+--log_weight_norms \
 --log_diagnostic_freq 5 \
---ckpt_to_save 2 \
+--ckpt_to_save 1 \
+--keep_last_ckpts 1 \
+--keep_ckpt_epochs "14" \
 --log_activations \
 --seed "$SEED" \
 --job_name $JOB_NAME \

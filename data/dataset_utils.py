@@ -80,7 +80,7 @@ def load_hf_dataset(dataset_config: dict) -> datasets.IterableDataset:
         column = dataset_config["filter_geq_column"]
         value = dataset_config.get("filter_geq_value", 0)
         f = lambda example: example[column] >= value
-        if "filter_geq_column" == TEXT_COLUMN:
+        if column == TEXT_COLUMN:
             # If we have only text column, let's use number of words
             # as a criterion.
             f = lambda example: len(example[column].split()) >= value
@@ -89,7 +89,7 @@ def load_hf_dataset(dataset_config: dict) -> datasets.IterableDataset:
         column = dataset_config["filter_leq_column"]
         value = dataset_config.get("filter_leq_value", 2 ** 64)
         f = lambda example: example[column] <= value
-        if "filter_leq_column" == TEXT_COLUMN:
+        if column == TEXT_COLUMN:
             # If we have only text column, let's use number of words
             # as a criterion.
             f = lambda example: len(example[column].split()) <= value
