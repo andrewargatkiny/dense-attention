@@ -583,9 +583,9 @@ def construct_arguments():
     args.logger = logger
     config = json.load(open(args.config_file, 'r', encoding='utf-8'))
     args.config = config
-    # Overriding parameters in configs
-    if args.override:
-        override_configs(args)
+    args.deepspeed_config = json.load(
+        open(args.deepspeed_config, 'r', encoding='utf-8'))    
+
     if args.model_config_file and args.model_config_file != args.config_file:
         model_config = json.load(
             open(args.model_config_file, 'r', encoding='utf-8')
@@ -601,8 +601,12 @@ def construct_arguments():
             open(args.train_config_file, 'r', encoding='utf-8')
         )
         args.config["training"] = train_config["training"]
+    
+    # Overriding parameters in configs
+    if args.override:
+        override_configs(args)
+    
     args.task = TaskRegistry.get_task(args.task_type)
-
     args.job_name = config['name'] if args.job_name is None else args.job_name
     print("Running Config File: ", args.job_name)
     # Setting the distributed variables
