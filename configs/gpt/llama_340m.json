@@ -35,7 +35,7 @@
         "validation": {
             "hf_dataset_name": "EleutherAI/wikitext_document_level",
             "hf_dataset_subset": "wikitext-2-raw-v1",
-            "hf_dataset_split": "train",
+            "hf_dataset_split": "test",
             "offset": 0,
             "hf_chunk_size": 62,
             "total_samples": 1000,
