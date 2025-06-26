@@ -28,7 +28,7 @@ if [ "${1-}" = "--resume" ]; then
     LOAD_EPOCH=""
   fi
 
-  [ $# -ge 1 ] || { echo "Usage: $0 --resume [EPOCH|last] JOB_NAME"; exit 1; }
+  [ $# -ge 1 ] && [ "$1" != "--override" ] || { echo "Usage: $0 --resume [EPOCH|last] JOB_NAME"; exit 1; }
   SUBDIR=$1; shift
 
   if [ "${1-}" = "--override" ]; then
