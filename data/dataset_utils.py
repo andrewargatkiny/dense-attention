@@ -187,8 +187,8 @@ class ShardedDatasetWrapper:
             self.current_offsets = dict()
             for source in dataset_config["hf_sources"]:
                 # Number of raw dataset entries to treat as one chunk
-                self.chunk_sizes[source["name"]] = (
-                    self.dataset_config.get("chunk_size", 2 ** 20))
+                self.chunk_sizes[source["name"]] = source.get(
+                    "chunk_size", 2 ** 20)
                 # A pointer which moves `chunk_size` entries over the
                 # dataset each epoch.
                 self.current_offsets[source["name"]] = 0
