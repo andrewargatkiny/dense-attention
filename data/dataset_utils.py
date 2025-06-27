@@ -88,11 +88,17 @@ class HFDatasetParams:
     filter_leq_value: int = 2**64
 
 
-def load_hf_datasets(dataset_configs: List[dict]) -> datasets.IterableDataset:
+def load_hf_datasets(dataset_configs: List[dict],
+                     seed: Optional[int] = None) -> datasets.IterableDataset:
     """
     Loads one or possibly several HuggingFace datasets, specified in
-    `dataset_configs`, in streaming mode and interleaves them
-    into one, using the 'dataset_weight' parameter of each config.
+    `dataset_configs`, in streaming mode and mixes them into one.
+
+    Args:
+    dataset_configs (List[dict]): A list of HG dataset configurations to load
+        and interleave.
+    seed (Optional[int], optional): An optional seed for the pseudo-random
+        interleaving process. Defaults to None.
     """
     dataset_configs = [HFDatasetParams(**config) for config in dataset_configs]
     if len(dataset_configs) == 1:
@@ -105,7 +111,8 @@ def load_hf_datasets(dataset_configs: List[dict]) -> datasets.IterableDataset:
     ds_weights = np.array(ds_weights)
     assert np.all(ds_weights >= 0), f"Dataset weights {ds_weights} should be non-negative."
     ds_weights = (ds_weights / ds_weights.sum()).tolist()
-    return datasets.interleave_datasets(ds_list, probabilities=ds_weights,
+    return datasets.interleave_datasets(ds_list, seed=seed,
+                                        probabilities=ds_weights,
                                         stopping_strategy="all_exhausted")
 
 def load_hf_dataset(dataset_config: HFDatasetParams) -> datasets.IterableDataset:
@@ -211,10 +218,12 @@ class ShardedDatasetWrapper:
 
     def dataset_order_info(self):
         if self.use_hf_sources:
-            print(f"rank {self.global_rank} "
-                  f"dataset name {self.dataset_config['name']} "
-                  f"subset {self.dataset_config.get('subset')}, "
-                  f"offset {self.current_offsets} entries {self.chunk_sizes}")
+            for source in self.dataset_config["hf_sources"]:
+                print(f"rank {self.global_rank} "
+                      f"dataset name {source['name']} "
+                      f"subset {source.get('subset')}, "
+                      f"offset {self.current_offsets[source]} "
+                      f"entries {self.chunk_sizes[source]}")
             return
         for i in range(0, self.num_files // 4):
             print(f"rank {self.global_rank} {i}-th foursome of files: {self.dataset_files[4 * i:4 * (i + 1)]}")

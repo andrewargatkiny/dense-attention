@@ -478,7 +478,7 @@ class BertOnlyMLMDataset(Dataset):
                 print(time.ctime(), f"Started loading data from HuggingFace "
                                     f"{source['name']} dataset, "
                                     f"offset {source['offset']}")
-            ds = load_hf_datasets(dataset_config["hf_sources"])
+            ds = load_hf_datasets(dataset_config["hf_sources"], seed=self.seed)
             sep_token = self.tokenizer.sep_token
             def add_sep_tok(example):
                 example["text"] = example["text"] + sep_token
@@ -610,7 +610,7 @@ class GPTPretrainingDataset(Dataset):
                 print(time.ctime(), f"Started loading data from HuggingFace "
                                     f"{source['name']} dataset, "
                                     f"offset {source['offset']}")
-            ds = load_hf_datasets(dataset_config["hf_sources"])
+            ds = load_hf_datasets(dataset_config["hf_sources"], seed=self.seed)
             eos_token = self.tokenizer.eos_token
             def strip_add_eos_tok(example):
                 example["text"] = example["text"].strip() + eos_token

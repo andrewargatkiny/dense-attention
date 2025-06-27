@@ -49,6 +49,7 @@
                 }
             ],
             "shuffle": true,
+            "seed": 1,
             "max_seq_length": 1024,
             "total_samples": 131072
         },
@@ -70,6 +71,7 @@
                     "dataset_weight": 0.25
                 }
             ],
+            "seed": 1,
             "max_seq_length": 1024,
             "total_samples": 20000
         },
