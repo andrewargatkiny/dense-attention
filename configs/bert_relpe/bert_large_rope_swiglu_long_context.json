@@ -37,14 +37,14 @@
                 {
                     "name": "HuggingFaceTB/dclm-edu",
                     "split": "train",
-                    "chunk_size": 120000,
+                    "chunk_size": 75000,
                     "dataset_weight": 0.75
                 },
                 {
                     "name": "codeparrot/github-code",
                     "split": "train",
                     "trust_remote_code": true,
-                    "chunk_size": 40000,
+                    "chunk_size": 25000,
                     "dataset_weight": 0.25
                 }
             ],
@@ -59,7 +59,7 @@
                     "name": "HuggingFaceTB/dclm-edu",
                     "split": "train",
                     "offset": 100000,
-                    "chunk_size": 21000,
+                    "chunk_size": 12000,
                     "dataset_weight": 0.75
                 },
                 {
@@ -67,7 +67,7 @@
                     "split": "train",
                     "trust_remote_code": true,
                     "offset": 100000,
-                    "chunk_size": 7000,
+                    "chunk_size": 4000,
                     "dataset_weight": 0.25
                 }
             ],
