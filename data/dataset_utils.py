@@ -222,8 +222,8 @@ class ShardedDatasetWrapper:
                 print(f"rank {self.global_rank} "
                       f"dataset name {source['name']} "
                       f"subset {source.get('subset')}, "
-                      f"offset {self.current_offsets[source]} "
-                      f"entries {self.chunk_sizes[source]}")
+                      f"offset {self.current_offsets[source['name']]} "
+                      f"entries {self.chunk_sizes[source['name']]}")
             return
         for i in range(0, self.num_files // 4):
             print(f"rank {self.global_rank} {i}-th foursome of files: {self.dataset_files[4 * i:4 * (i + 1)]}")
