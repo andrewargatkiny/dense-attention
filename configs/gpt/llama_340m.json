@@ -23,32 +23,44 @@
     },
     "data": {
         "training": {
-            "hf_dataset_name": "HuggingFaceFW/fineweb-edu",
-            "hf_dataset_subset": "sample-100BT",
-            "hf_dataset_split": "train",
-            "hf_chunk_size": 600000,
+            "hf_sources": [
+                {
+                    "name": "HuggingFaceFW/fineweb-edu",
+                    "subset": "sample-100BT",
+                    "split": "train",
+                    "chunk_size": 600000
+                }
+            ],
             "total_samples": 131072,
             "max_seq_length": 4096,
             "tokenizer_name": "huggyllama/llama-7b",
             "pad_samples": false
         },
         "validation": {
-            "hf_dataset_name": "EleutherAI/wikitext_document_level",
-            "hf_dataset_subset": "wikitext-2-raw-v1",
-            "hf_dataset_split": "test",
-            "offset": 0,
-            "hf_chunk_size": 62,
+            "hf_sources": [
+                {
+                    "name": "EleutherAI/wikitext_document_level",
+                    "subset": "wikitext-2-raw-v1",
+                    "split": "test",
+                    "offset": 0,
+                    "chunk_size": 62
+                }
+            ],
             "total_samples": 81,
             "max_seq_length": 4096,
             "tokenizer_name": "huggyllama/llama-7b",
             "pad_samples": false
         },
         "test": {
-            "hf_dataset_name": "HuggingFaceFW/fineweb-edu",
-            "hf_dataset_subset": null,
-            "hf_dataset_split": "train",
-            "offset": 10000,
-            "hf_chunk_size": 75000,
+            "hf_sources": [
+                {
+                    "name": "HuggingFaceFW/fineweb-edu",
+                    "subset": null,
+                    "split": "train",
+                    "offset": 10000,
+                    "chunk_size": 75000
+                }
+            ],
             "total_samples": 16384,
             "max_seq_length": 4096,
             "tokenizer_name": "huggyllama/llama-7b",

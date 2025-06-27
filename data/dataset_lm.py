@@ -19,7 +19,7 @@ from collections import deque, namedtuple
 from tqdm import tqdm
 from transformers import BertTokenizerFast, AutoTokenizer
 
-from data.dataset_utils import load_hf_dataset
+from data.dataset_utils import load_hf_datasets
 
 
 def BertPretrainingDatasetFactory(base_dir, dataset_config, args=None):
@@ -452,8 +452,6 @@ class BertOnlyMLMDataset(Dataset):
             torch.manual_seed(self.seed)
             np.random.seed(self.seed)
 
-        file_path = os.path.join(base_dir, dataset_config["input_file"])
-
         tokenizer_name = dataset_config.get("tokenizer_name", "bert-large-uncased")
         self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, use_fast=True)
         self.mask_token_id = self.tokenizer.mask_token_id
@@ -472,16 +470,36 @@ class BertOnlyMLMDataset(Dataset):
         self.same_dataset_pairs = dataset_config.get("same_dataset_pairs", False)
         self.total_samples = dataset_config.get("total_samples", 2**19)
 
-        print(time.ctime(), f"Started Building documents from {file_path}")
-        df = pd.read_json(file_path, lines=True)
-        df.sample(frac=1, replace=False)
-        print(time.ctime(), f"Started basic preprocessing")
-        # df['text'] = df['text'].str.replace('\n', ' ')
-        df['text'] = df['text'] + self.tokenizer.sep_token
+        # Set to False by default for legacy reasons
+        self.shuffle = dataset_config.get("shuffle", False)
+        self.pad_samples = dataset_config.get("pad_samples", False)
+        if "hf_sources" in dataset_config:
+            for source in dataset_config["hf_sources"]:
+                print(time.ctime(), f"Started loading data from HuggingFace "
+                                    f"{source['name']} dataset, "
+                                    f"offset {source['offset']}")
+            ds = load_hf_datasets(dataset_config["hf_sources"])
+            sep_token = self.tokenizer.sep_token
+            def add_sep_tok(example):
+                example["text"] = example["text"] + sep_token
+                return example
+            ds = ds.map(add_sep_tok)
+            all_sentences = [example["text"] for example in ds]
+            del ds
+        else:
+            file_path = os.path.join(base_dir, dataset_config["input_file"])
+            print(time.ctime(), f"Started Building documents from {file_path}")
+            df = pd.read_json(file_path, lines=True)
+            df.sample(frac=1, replace=False)
+            print(time.ctime(), f"Started basic preprocessing")
+            # df['text'] = df['text'].str.replace('\n', ' ')
+            df['text'] = df['text'] + self.tokenizer.sep_token
+            all_sentences = df['text'].tolist()
+            del df
 
-        all_sentences = df['text'].tolist()
-        del df
-
+        if self.shuffle:
+            print(time.ctime(), f"Started shuffling")
+            random.shuffle(all_sentences)
         print(f"First sequence: {all_sentences[0]}")
         print(time.ctime(), f"Started tokenization")
         all_seqs = []
@@ -587,11 +605,12 @@ class GPTPretrainingDataset(Dataset):
         self.max_seq_len = dataset_config.get("max_seq_length", 2048)
         self.total_samples = dataset_config.get("total_samples", 2**19)
 
-        if "hf_dataset_name" in dataset_config:
-            print(time.ctime(), f"Started loading data from HuggingFace "
-                                f"{dataset_config['hf_dataset_name']} dataset, "
-                                f"offset {dataset_config['offset']}")
-            ds = load_hf_dataset(dataset_config)
+        if "hf_sources" in dataset_config:
+            for source in dataset_config["hf_sources"]:
+                print(time.ctime(), f"Started loading data from HuggingFace "
+                                    f"{source['name']} dataset, "
+                                    f"offset {source['offset']}")
+            ds = load_hf_datasets(dataset_config["hf_sources"])
             eos_token = self.tokenizer.eos_token
             def strip_add_eos_tok(example):
                 example["text"] = example["text"].strip() + eos_token
