@@ -85,12 +85,13 @@ class HFDatasetParams:
     filter_leq_value: int = 2**64
 
 
-def load_hf_datasets(dataset_configs: List[HFDatasetParams]) -> datasets.IterableDataset:
+def load_hf_datasets(dataset_configs: List[dict]) -> datasets.IterableDataset:
     """
     Loads one or possibly several HuggingFace datasets, specified in
     `dataset_configs`, in streaming mode and interleaves them
     into one, using the 'dataset_weight' parameter of each config.
     """
+    dataset_configs = [HFDatasetParams(**config) for config in dataset_configs]
     if len(dataset_configs) == 1:
         return load_hf_dataset(dataset_configs[0])
     ds_list = []
