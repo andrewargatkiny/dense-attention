@@ -436,7 +436,32 @@ def set_nested_checked(config_dict: dict, key_path: str, value):
     print(f"Set {key_path} = {value}")
     
 def parse_value(val: str):
-    """Parse a string value into a JSON type if possible, otherwise return as string.
+    """
+    Parses a string into the appropriate JSON-compatible type.
+    If parsing fails, returns the original string.
+
+    Supported types:
+    - int:        "1", "32"
+    - float:      "0.011", "1e-16"
+    - bool:       "true", "false"
+    - list:       "[0.9, 0.9]"
+    - dict:       '{"inputs":"input/train.src","labels":"label/train.label"}'
+    - str:        "\"input/train.src\""
+
+    Examples:
+        parse_value("1")                                → 1 (int)
+        parse_value("false")                            → False (bool)
+        parse_value("1e-16")                            → 1e-16 (float)
+        parse_value("[0.9, 0.9]")                       → [0.9, 0.9] (list)
+        parse_value("\"input/train.src\"")              → "input/train.src" (str, JSON string)
+        parse_value("input/train.src")                  → "input/train.src" (raw string)
+        parse_value('{"inputs":"input/train.src","labels":"label/train.label"}')
+                                                        → {"inputs": "input/train.src",
+                                                        "labels": "label/train.label"} (dict)
+
+    Notes:
+    - String values must be wrapped in double quotes: "\"text\""
+    - For dictionaries, use single quotes around the full JSON object.
     """
     try:
         return json.loads(val)
