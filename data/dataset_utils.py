@@ -51,6 +51,8 @@ class HFDatasetParams:
         offset (int, optional): The number of records to skip from the start
             of the sharded dataset. Defaults to 0.
         split (str, optional): The dataset split to use. Defaults to "train".
+        trust_remote_code (bool, optional): See description of this option in
+            HuggingFace's `datasets.load_dataset`. Defaults to None.
         world_size (int, optional): Splits the dataset into this number of shards,
             which is useful for distributed training. Defaults to 1.
         global_rank (int, optional): The shard of the dataset with this index
@@ -76,6 +78,7 @@ class HFDatasetParams:
     subset: Optional[str] = None
     offset: int = 0
     split: str = "train"
+    trust_remote_code: Optional[bool] = None
     world_size: int = 1
     global_rank: int = 0
     dataset_weight: float = 1.0
@@ -118,6 +121,7 @@ def load_hf_dataset(dataset_config: HFDatasetParams) -> datasets.IterableDataset
         dataset_config.name,
         dataset_config.subset,
         split=dataset_config.split,
+        trust_remote_code=dataset_config.trust_remote_code,
         streaming=True
     ).shard(
         # Handle distributed training

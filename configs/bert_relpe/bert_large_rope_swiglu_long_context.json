@@ -43,6 +43,7 @@
                 {
                     "name": "codeparrot/github-code",
                     "split": "train",
+                    "trust_remote_code": true,
                     "chunk_size": 40000,
                     "dataset_weight": 0.25
                 }
@@ -63,6 +64,7 @@
                 {
                     "name": "codeparrot/github-code",
                     "split": "train",
+                    "trust_remote_code": true,
                     "offset": 100000,
                     "chunk_size": 7000,
                     "dataset_weight": 0.25
