@@ -446,7 +446,7 @@ def parse_value(val: str):
     - bool:       "true", "false"
     - list:       "[0.9, 0.9]"
     - dict:       '{"inputs":"input/train.src","labels":"label/train.label"}'
-    - str:        "\"input/train.src\""
+    - str:        "\"input/train.src\"", "input/train.src"
 
     Examples:
         parse_value("1")                                → 1 (int)
@@ -460,7 +460,7 @@ def parse_value(val: str):
                                                         "labels": "label/train.label"} (dict)
 
     Notes:
-    - String values must be wrapped in double quotes: "\"text\""
+    - String values can be written as: "text" or text (no need for escape sequences).
     - For dictionaries, use single quotes around the full JSON object.
     """
     try:
