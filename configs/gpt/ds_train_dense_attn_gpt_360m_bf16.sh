@@ -59,8 +59,12 @@ NCCL_TREE_THRESHOLD=0 deepspeed --master_port "$MASTER_PORT" ${base_dir}/deepspe
 --no_decay_embeddings \
 --no_eval_val_data \
 --eval_test_data \
+--log_weight_norms \
 --log_diagnostic_freq 5 \
---ckpt_to_save 2 \
+--ckpt_to_save 1 \
+--keep_last_ckpts 1 \
+--keep_ckpt_every 5 \
+--keep_ckpt_epochs "5" \
 --seed "$SEED" \
 --job_name $JOB_NAME \
 --deepspeed_config "$DS_CONFIG" \
