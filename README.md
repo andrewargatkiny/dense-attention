@@ -2,6 +2,8 @@
 
 This repository hosts the code of the official implementation and the experiments for
 the paper "MatMuls are Enough for Efficient and Performant Linear-Time Attention".
+It also holds the code of the framework for training and evaluation of 
+efficient  linear-time architectures, which is under active development and will be used in future research.
 
 > ICML 2025 Workshops version of the paper: 
 > * LCFM (short format) https://openreview.net/forum?id=yLh58rr4JX
