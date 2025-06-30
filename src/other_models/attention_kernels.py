@@ -27,10 +27,13 @@ def sliding_window_mask_256(b, h, q_idx, kv_idx):
 def sliding_window_mask_512(b, h, q_idx, kv_idx):
     return (q_idx >= kv_idx) & ((q_idx - kv_idx) < 512)
 
+def sliding_window_mask_1024(b, h, q_idx, kv_idx):
+    return (q_idx >= kv_idx) & ((q_idx - kv_idx) < 1024)
+
 w_size_to_func = {
     32: sliding_window_mask_32, 64: sliding_window_mask_64,
     128: sliding_window_mask_128, 256: sliding_window_mask_256,
-    512: sliding_window_mask_512
+    512: sliding_window_mask_512, 1024: sliding_window_mask_1024
 }
 class SoftmaxAttention(nn.Module):
     def __init__(self, config):

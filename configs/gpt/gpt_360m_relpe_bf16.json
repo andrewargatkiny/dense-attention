@@ -30,7 +30,7 @@
         "chunk_size": 2048,
         "local_attention": true,
         "local_scheme": "sw_sw_g",
-        "window_size": 32
+        "window_size": 1024
 
     },
     "data": {
@@ -47,12 +47,12 @@
         }
     },
     "training": {
-        "num_epochs": 10,
+        "num_epochs": 5,
         "lr_scheduler_params": {
             "warmup_ratio": 0.015,
             "warmup_degree": 1,
             "degree": 1,
-            "one_cycle_steps": 40960
+            "one_cycle_steps": 20480
         },
         "lr_schedule": "cosine",
         "lr_offset": 0.00008,

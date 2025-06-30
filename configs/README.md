@@ -41,9 +41,56 @@ DS_ACCELERATOR="cpu" deepspeed --num_accelerators 1 --bind_cores_to_rank --bind_
 You also should set `--dist_backend` argument of `deepspeed_train` to some other value 
 aside from `'nccl'`. See https://pytorch.org/docs/stable/distributed.html#backends for available options.
 
+## Overriding config params via CLI at launch time
+
+In addition, you can **override any configuration parameter** directly from the command line using the `--override` flag, without modifying the original config files. This allows quick and flexible experimentation while keeping base configs unchanged.
+Each override must include the full path to the parameter, reflecting its nesting in the configuration structure.
+
+**Overriding parameters from different configuration sources is distinguished using the following prefixes:**
+
+- `cf.` - for parameters from the **Model config**
+- `ds.` - for parameters from the **DeepSpeed config**
+
+**Supported Override Types**
+
+| Type                        | Example                                                                 |
+|-----------------------------|-------------------------------------------------------------------------|
+| Integer                     | `cf.model_config.num_attention_heads=1`                                |
+| Boolean                     | `cf.model_config.local_attention=false`                                |
+| Float                       | `ds.optimizer.params.eps=1e-16`, `ds.optimizer.params.weight_decay=0.011`|
+| String                      | `cf.data.validation.inputs=input/train.src`                            |
+| Quoted String               | `cf.data.validation.labels="label/train.label"`                        |
+| List                        | `ds.optimizer.params.betas=[0.9,0.9]`                                   |
+| Dictionary                  | `cf.data.training='{"inputs":"input/valid.src","labels":"label/valid.label"}'` |
+
+
+**Notes:**
+
+- String values can be written as: "text" or text.
+- For dictionaries, use single quotes around the full JSON object.
+
+
+**Example Usage**
+
+```bash
+ds_train_*.sh \
+  --override \
+  cf.model_config.num_attention_heads=1 \
+  cf.model_config.local_attention=false \
+  cf.data.validation.inputs=input/valid.src \
+  cf.data.validation.labels="label/valid.label" \
+  ds.train_batch_size=32 \
+  ds.train_micro_batch_size_per_gpu=32 \
+  ds.optimizer.params.eps=1e-16 \
+  ds.optimizer.params.betas=[0.9,0.9] \
+  ds.optimizer.params.weight_decay=0.011 \
+  cf.data.training='{"inputs":"input/valid.src","labels":"label/valid.label"}'
+  ```
+
+
 ## Examples
 
-Here's some usage examples:
+Here are some usage examples:
 
 ### DANet-BERT and GPT/LLAMA pre-training
 

@@ -1,11 +1,13 @@
 # MatMuls are Enough for Linear-Time Dense Attention
 
 This repository hosts the code of the official implementation and the experiments for
-the paper "MatMuls are Enough for Linear-Time Dense Attention".
+the paper "MatMuls are Enough for Efficient and Performant Linear-Time Attention".
 
-> ICLR 2025 SCI-FM Workshop version of the paper: https://openreview.net/forum?id=853Qpy0tPz
+> ICML 2025 Workshops version of the paper: 
+> * LCFM (short format) https://openreview.net/forum?id=yLh58rr4JX
+> * ES-FoMo III (extended version) https://openreview.net/forum?id=RttNumxC1t
 > 
-> (Also available [locally](assets/MatMuls_Are_Enough_ICLR_Apr2025_CameraReady.pdf))
+> (Also available [locally](assets/Matmuls_are_Enough_ICML_Jun2025_%20CameraReady.pdf))
 > 
 > DANet-BERT models on HuggingFace: *to be added soon* 
 ## About DenseAttention
@@ -43,8 +45,9 @@ Throughput (thousands tokens per second) comparison for 330M–parameters encode
 DenseAttention achieves better speed, linear complexity, and computational efficiency 
 without compromising the modeling performance. This is exemplified by, among other 
 experiments, DANet-BERT-Large LM 
-pre-training on 300B tokens and fine-tuning on the GLUE benchmarks, and by empirical 
-validation on, among others, the LRA suite of benchmarks where it outperforms all previous 
+pre-training on approximately 500B tokens and fine-tuning on the GLUE benchmarks, which yields best results 
+out of all models of comparable size trained on sub-trillion token count data. It's also supported by 
+validation on the LRA suite of benchmarks where it outperforms all previous 
 Transformer-based architectures at least by 5%.
 
 ### The architecture 
@@ -58,7 +61,7 @@ operations and merging projection matrices. To ensure numerical stability, We re
 standard `LayerNorm` with [MaxNormActivation](./src/activations.py), and for adding sharp 
 focus on nearby tokens in extremely long contexts, we introduce `local` and `shifted local` 
 DenseAttention layers designed to complement standard layers with global receptive field.
-More details are provided [in the paper](assets/MatMuls_Are_Enough_ICLR_Apr2025_CameraReady.pdf).
+More details are provided [in the paper](assets/Matmuls_are_Enough_ICML_Jun2025_%20CameraReady.pdf).
 
 
 
@@ -70,7 +73,7 @@ More details are provided [in the paper](assets/MatMuls_Are_Enough_ICLR_Apr2025_
 ### Disclaimer
 
 > This is an ongoing project. Some parts of the code and configs are subject to change. 
-For ICLR 2025 SCI-FM Workshop version, please checkout `iclr-sci-fm-2025` branch.
+For the most current version and new features, please checkout `dev` branch.
 ---
 
 The code for DenseAttention Network, its constituents and models built upon 
@@ -111,8 +114,11 @@ directory. It can take a long time.
 To reproduce an experiment, or simply **train** / **evaluate** a model, launch corresponding `ds_train_*.sh` 
 script from the [configs/](./configs) directory which contains exact configurations 
 for the experiments in the paper. Under the hood, it launches [deepspeed_train.py](deepspeed_train.py) 
-with a preconfigured set of arguments. To construct your own pipeline or to learn 
-about each argument's effect, please refer to [train_arguments.py](train_arguments.py) script and 
+with a preconfigured set of arguments. 
+Additionally, you can **override any configuration parameter** directly
+[from the command line](configs/README.md#overriding-config-params-via-cli-at-launch-time) 
+using the `--override` flag, without modifying the original config files. 
+To construct your own pipeline or to learn  about each argument's effect, please refer to [train_arguments.py](train_arguments.py) script and 
 [Using Configs to Run Experiments](configs/README.md).
 
 
@@ -120,53 +126,10 @@ It’s recommended to use `ClearML` open-source ML experiments tracking system f
 the training. You can use it in the cloud up to a small storage limit or install on
 your server, for free. Here are the instructions on [how to install it on your system](https://clear.ml/docs/latest/docs/deploying_clearml/clearml_server_linux_mac/) 
 and [how to use it](https://clear.ml/docs/latest/docs/). 
-ClearML is enabled  by default, if you’d prefer not to use it, disable it by providing 
-`--no_clearml` argument in `deepspeed_train.py` params of the training script.
+ClearML is enabled  by default, but it's also possible to use `Weights & Biases` or `Tensorboard` by providing 
+`--wandb` or `--tensorboard` argument in `deepspeed_train.py` params of the training script.
 
 
-In addition, you can **override any configuration parameter** directly from the command line using the `--override` flag, without modifying the original config files. This allows quick and flexible experimentation while keeping base configs unchanged.
-Each override must include the full path to the parameter, reflecting its nesting in the configuration structure.
-
-**Overriding parameters from different configuration sources is distinguished using the following prefixes:**
-
-- `cf.` - for parameters from the **Model config**
-- `ds.` - for parameters from the **DeepSpeed config**
-
-**Supported Override Types**
-
-| Type                        | Example                                                                 |
-|-----------------------------|-------------------------------------------------------------------------|
-| Integer                     | `cf.model_config.num_attention_heads=1`                                |
-| Boolean                     | `cf.model_config.local_attention=false`                                |
-| Float                       | `ds.optimizer.params.eps=1e-16`, `ds.optimizer.params.weight_decay=0.011`|
-| String                      | `cf.data.validation.inputs=input/train.src`                            |
-| Quoted String               | `cf.data.validation.labels="label/train.label"`                        |
-| List                        | `ds.optimizer.params.betas=[0.9,0.9]`                                   |
-| Dictionary                  | `cf.data.training='{"inputs":"input/valid.src","labels":"label/valid.label"}'` |
-
-
-**Notes:**
-
-- String values can be written as: "text" or text.
-- For dictionaries, use single quotes around the full JSON object.
-
-
-**Example Usage**
-
-```bash
-!ds_train_*.sh \
-  --override \
-  cf.model_config.num_attention_heads=1 \
-  cf.model_config.local_attention=false \
-  cf.data.validation.inputs=input/valid.src \
-  cf.data.validation.labels="label/valid.label" \
-  ds.train_batch_size=32 \
-  ds.train_micro_batch_size_per_gpu=32 \
-  ds.optimizer.params.eps=1e-16 \
-  ds.optimizer.params.betas=[0.9,0.9] \
-  ds.optimizer.params.weight_decay=0.011 \
-  cf.data.training='{"inputs":"input/valid.src","labels":"label/valid.label"}'
-  ```
 
 
 ## Citation
@@ -176,11 +139,11 @@ If you use DenseAttention in research or production, or otherwise find it useful
 ```
 @inproceedings{
 argatkiny2025matmuls,
-title={MatMuls are Enough for Linear-Time Dense Attention},
+title={MatMuls are Enough for Efficient and Performant Linear-Time Attention},
 author={Andrew Argatkiny and Ilya Makarov},
-booktitle={ICLR 2025 First Workshop on Open Science for Foundation Models},
+booktitle={ES-FoMo III: 3rd Workshop on Efficient Systems for Foundation Models},
 year={2025},
-url={https://openreview.net/forum?id=853Qpy0tPz}
+url={https://openreview.net/forum?id=RttNumxC1t}
 }
 ```
 
