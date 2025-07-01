@@ -11,6 +11,15 @@ TRACKING_SYSTEM=${TRACKING_SYSTEM:-clearml}
 OUTPUT_DIR=${base_dir}/bert_model_dense_attn_adam_outputs
 BASE_JOB_NAME="lra_pathfinder_32"
 
+REUSE_JOB_NAME=false
+for arg in "$@"; do
+  if [ "$arg" = "--reuse_job_name" ]; then
+    REUSE_JOB_NAME=true
+    set -- "${@/--reuse_job_name/}"
+    break
+  fi
+done
+
 # Default values
 : "${BASE_DATA_DIR:=${base_dir}/data}"
 CHECKPOINT_BASE_PATH=""
@@ -52,6 +61,9 @@ if [ "${1-}" = "--resume" ]; then
 
 
   JOB_NAME="${SUBDIR}_from_epoch_${LOAD_EPOCH}${JOB_NAME_SUFFIX}"
+  if $REUSE_JOB_NAME; then
+    JOB_NAME="$SUBDIR"
+  fi
 else
   # Set up for initial training
   JOB_NAME="${BASE_JOB_NAME}${JOB_NAME_SUFFIX}"
