@@ -7,8 +7,7 @@ from src.other_models import (TransformerForPreTraining,
 from src.modeling import DANetForPreTraining, BertForSequenceClassification, BertForAANMatching, \
     BertForRegression
 
-from src.modeling_s4 import S4ForPreTraining, S4ForSequenceClassification, S4ForAANMatching, \
-    S4ForRegression
+from src.modeling_s4 import S4ForPreTraining, S4ForSequenceClassification
 
 from src.other_models.bert_hf import BertHFForSequenceClassification
 from data.dataset import (LRADataset, LRATextDataset,
