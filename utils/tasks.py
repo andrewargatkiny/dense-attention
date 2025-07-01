@@ -6,6 +6,10 @@ from src.other_models import (TransformerForPreTraining,
                               TransformerForRegression, TransformerConfig)
 from src.modeling import DANetForPreTraining, BertForSequenceClassification, BertForAANMatching, \
     BertForRegression
+
+from src.modeling_s4 import S4ForPreTraining, S4ForSequenceClassification, S4ForAANMatching, \
+    S4ForRegression
+
 from src.other_models.bert_hf import BertHFForSequenceClassification
 from data.dataset import (LRADataset, LRATextDataset,
                           DatasetForMLM, TextDatasetForMLM, AANDataset,
@@ -17,6 +21,14 @@ from train_utils import eval_classification_task, eval_mlm_classification_task, 
 
 @dataclass
 class SequenceClassification:
+    """Task for basic sequence classification which treats all sequences as
+    having same length."""
+    dataset_type = LRADataset
+    model_type = S4ForSequenceClassification
+    eval_func = eval_classification_task
+
+@dataclass
+class S4SequenceClassification:
     """Task for basic sequence classification which treats all sequences as
     having same length."""
     dataset_type = LRADataset
@@ -208,6 +220,7 @@ class TaskRegistry:
 
 
 TaskRegistry.register_task("sequence_classification", SequenceClassification)
+TaskRegistry.register_task("s4_sequence_classification", S4SequenceClassification)
 TaskRegistry.register_task("text_classification", TextClassification)
 TaskRegistry.register_task("texts_matching", TextsMatching)
 TaskRegistry.register_task("sequence_classification_mlm", SequenceClassificationMLM)

@@ -23,6 +23,7 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 
 import logging
 from collections import OrderedDict
+import json
 
 import torch
 from torch import nn
@@ -40,6 +41,117 @@ from torch.nn.parameter import Parameter
 from src.danet_layers import DANetLayerWithLocalAttention, DANetLayer, TransformerLayer
 
 logger = logging.getLogger(__name__)
+
+
+
+
+class S4Config(object):
+    """Configuration class to store the configuration of a `BertModel`.
+    """
+    def __init__(self,
+                 vocab_size_or_config_json_file,
+                 d_model=768,
+                 d_state=64,
+                 num_hidden_layers=12,
+                 l_max=None,
+                 channels=1,
+                 bidirectional=True,
+                 activation='gelu',
+                 postact='glu',
+                 hyper_act=None,
+                 dropout=0.0, tie_dropout=False,
+                 bottleneck=None,
+                 gate=None,
+                 transposed=True,
+                 verbose=False,
+                 **kwargs):
+        """Constructs ModelConfig.
+
+        Args:
+            vocab_size_or_config_json_file: Vocabulary size of `inputs_ids` in `BertModel`.
+            hidden_size: Size of the encoder layers and the pooler layer.
+            num_hidden_layers: Number of hidden layers in the Transformer encoder.
+            num_attention_heads: Number of attention heads for each attention layer in
+                the Transformer encoder.
+            intermediate_size: The size of the "intermediate" (i.e., feed-forward)
+                layer in the Transformer encoder.
+            hidden_act: The non-linear activation function (function or string) in the
+                encoder and pooler. If string, "gelu", "relu" and "swish" are supported.
+            hidden_dropout_prob: The dropout probabilitiy for all fully connected
+                layers in the embeddings, encoder, and pooler.
+            attention_probs_dropout_prob: The dropout ratio for the attention
+                probabilities.
+            attn_proj_biases: Whether to use bias in Q, K, V, O matrices in attention.
+            max_position_embeddings: The maximum sequence length that this model might
+                ever be used with. Typically set this to something large just in case
+                (e.g., 512 or 1024 or 2048).
+            type_vocab_size: The vocabulary size of the `token_type_ids` passed into
+                `BertModel`.
+            initializer_range: The sttdev of the truncated_normal_initializer for
+                initializing all weight matrices.
+        """
+        if isinstance(vocab_size_or_config_json_file, str):
+            with open(vocab_size_or_config_json_file, "r",
+                      encoding='utf-8') as reader:
+                json_config = json.loads(reader.read())
+            for key, value in json_config.items():
+                self.__dict__[key] = value
+        elif isinstance(vocab_size_or_config_json_file, int):
+            self.vocab_size = vocab_size_or_config_json_file
+            self.hidden_size = hidden_size
+            self.num_hidden_layers = num_hidden_layers
+            self.num_attention_heads = num_attention_heads
+            self.hidden_act = hidden_act
+            self.intermediate_size = intermediate_size
+            self.attention_kernel = attention_kernel
+            self.feature_map = feature_map
+            self.no_reweight = no_reweight
+            self.embedding_dropout = embedding_dropout
+            self.hidden_dropout_prob = hidden_dropout_prob
+            self.attention_probs_dropout_prob = attention_probs_dropout_prob
+            self.attn_proj_biases = attn_proj_biases
+            self.max_position_embeddings = max_position_embeddings
+            self.pos_emb_type = PositionalEmbeddingsTypes[pos_emb_type.upper()]
+            self.relpe_type = relpe_type
+            self.type_vocab_size = type_vocab_size
+            self.initializer_range = initializer_range
+            self.causal = causal
+            self.local_attention = local_attention
+            self.window_size = window_size
+        else:
+            raise ValueError(
+                "First argument must be either a vocabulary size (int)"
+                "or the path to a pretrained model config file (str)")
+
+    @classmethod
+    def from_dict(cls, json_object):
+        """Constructs a `ModelConfig` from a Python dictionary of parameters."""
+        config = TransformerConfig(vocab_size_or_config_json_file=-1)
+        for key, value in json_object.items():
+            config.__dict__[key] = value
+        if torch.distributed.get_rank() == 0:
+            print(config)
+        return config
+
+    @classmethod
+    def from_json_file(cls, json_file):
+        """Constructs a `ModelConfig` from a json file of parameters."""
+        with open(json_file, "r", encoding='utf-8') as reader:
+            text = reader.read()
+        return cls.from_dict(json.loads(text))
+
+    def __repr__(self):
+        return str(self.to_json_string())
+
+    def to_dict(self):
+        """Serializes this instance to a Python dictionary."""
+        output = copy.deepcopy(self.__dict__)
+        return output
+
+    def to_json_string(self):
+        """Serializes this instance to a JSON string."""
+        return json.dumps(self.to_dict(), indent=2, sort_keys=True) + "\n"
+
 
 
 class RealNumberEmbedding(nn.Module):
