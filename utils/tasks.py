@@ -89,6 +89,8 @@ class TransformerSequenceClassification:
     dataset_type = LRADataset
     model_type = TransformerForSequenceClassification
     eval_func = eval_classification_task
+    config_type = TransformerConfig
+
 
 @dataclass
 class TransformerSequenceMLM:
@@ -97,6 +99,8 @@ class TransformerSequenceMLM:
     dataset_type = DatasetForMLM
     model_type = TransformerForPreTraining
     eval_func = eval_mlm_classification_task
+    config_type = TransformerConfig
+
 
 @dataclass
 class TransformerBertPretraining:
