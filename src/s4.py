@@ -1354,20 +1354,7 @@ class SSKernel(nn.Module):
 class S4(nn.Module):
     def __init__(
             self,
-            d_model,
-            d_state=64,
-            l_max=None,
-            channels=1,
-            bidirectional=False,
-            # Arguments for position-wise feedforward components
-            activation='gelu',
-            postact='glu',
-            hyper_act=None,
-            dropout=0.0, tie_dropout=False,
-            bottleneck=None,
-            gate=None,
-            transposed=True,
-            verbose=False,
+            config,
             # SSM Kernel arguments
             **kernel_args,
         ):
@@ -1396,40 +1383,55 @@ class S4(nn.Module):
         """
 
         super().__init__()
-        if verbose:
-            log.info(f"Constructing S4 (H, N, L) = ({d_model}, {d_state}, {l_max})")
+        self.d_model = config.d_model
+        self.d_state = config.d_state
+        self.num_hidden_layers = config.num_hidden_layers
+        self.l_max = config.l_max
+        self.channels = config.channels
+        self.bidirectional = config.bidirectional
+        self.activation = config.activation
+        self.postact = config.postact
+        self.hyper_act = config.hyper_act
+        self.dropout = config.dropout
+        self.tie_dropout = config.tie_dropout
+        self.bottleneck = config.bottleneck
+        self.gate = config.gate
+        self.transposed = config.transposed
+        self.verbose = config.verbose
+        if config.verbose:
+            log.info(f"Constructing S4 (H, N, L) = ({config.d_model}, {config.d_state}, {config.l_max})")
 
-        self.d_model = d_model
-        self.H = d_model
-        self.N = d_state
-        self.L = l_max
-        self.bidirectional = bidirectional
-        self.channels = channels
-        self.transposed = transposed
+        self.d_model = config.d_model
+        self.H = config.d_model
+        self.N = config.d_state
+        self.L = config.l_max
+        self.bidirectional = config.bidirectional
+        self.channels = config.channels
+        self.transposed = config.transposed
 
-        self.gate = gate
-        self.bottleneck = bottleneck
+        self.gate = config.gate
+        self.bottleneck = config.bottleneck
 
-        if bottleneck is not None:
-            self.H = self.H // bottleneck
+        if config.bottleneck is not None:
+            self.H = self.H // config.bottleneck
             self.input_linear = LinearActivation(
                 self.d_model,
                 self.H,
                 transposed=self.transposed,
-                activation=activation,
+                activation=config.activation,
                 activate=True,
             )
 
-        if gate is not None:
+        if config.gate is not None:
             self.input_gate = LinearActivation(
                 self.d_model,
-                self.d_model * gate,
+                self.d_model * config.gate,
                 transposed=self.transposed,
-                activation=activation,
+                activation=config.activation,
                 activate=True,
             )
             self.output_gate = LinearActivation(
-                self.d_model * gate,
+                self.d_model * config.gate,
                 self.d_model,
                 transposed=self.transposed,
                 activation=None,
@@ -1438,30 +1440,30 @@ class S4(nn.Module):
 
         # optional multiplicative modulation GLU-style
         # https://arxiv.org/abs/2002.05202
-        self.hyper = hyper_act is not None
+        self.hyper = config.hyper_act is not None
         if self.hyper:
-            channels *= 2
-            self.hyper_activation = Activation(hyper_act)
+            config.channels *= 2
+            self.hyper_activation = Activation(config.hyper_act)
 
-        self.D = nn.Parameter(torch.randn(channels, self.H))
+        self.D = nn.Parameter(torch.randn(config.channels, self.H))
 
         if self.bidirectional:
-            channels *= 2
+            config.channels *= 2
 
 
         # SSM Kernel
-        self.kernel = SSKernel(self.H, N=self.N, L=self.L, channels=channels, verbose=verbose, **kernel_args)
+        self.kernel = SSKernel(self.H, N=self.N, L=self.L, channels=config.channels, verbose=config.verbose, **kernel_args)
 
         # Pointwise
-        self.activation = Activation(activation)
-        dropout_fn = DropoutNd if tie_dropout else nn.Dropout
-        self.dropout = dropout_fn(dropout) if dropout > 0.0 else nn.Identity()
+        self.activation = Activation(config.activation)
+        dropout_fn = DropoutNd if config.tie_dropout else nn.Dropout
+        self.dropout = dropout_fn(config.dropout) if config.dropout > 0.0 else nn.Identity()
         # position-wise output transform to mix features
         self.output_linear = LinearActivation(
             self.H*self.channels,
             self.d_model*(1 if self.gate is None else self.gate),
             transposed=self.transposed,
-            activation=postact,
+            activation=config.postact,
             activate=True,
         )
 

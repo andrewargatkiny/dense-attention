@@ -64,6 +64,10 @@ class S4Config(object):
                  gate=None,
                  transposed=True,
                  verbose=False,
+                 embedding_ln_type ="hardtanh",
+                 initializer_range = 0.2,
+                 final_ln_type = None,
+                 classifier_bias = False,
                  **kwargs):
         """Constructs ModelConfig.
 
@@ -98,26 +102,26 @@ class S4Config(object):
                 self.__dict__[key] = value
         elif isinstance(vocab_size_or_config_json_file, int):
             self.vocab_size = vocab_size_or_config_json_file
-            self.hidden_size = hidden_size
             self.num_hidden_layers = num_hidden_layers
-            self.num_attention_heads = num_attention_heads
-            self.hidden_act = hidden_act
-            self.intermediate_size = intermediate_size
-            self.attention_kernel = attention_kernel
-            self.feature_map = feature_map
-            self.no_reweight = no_reweight
-            self.embedding_dropout = embedding_dropout
-            self.hidden_dropout_prob = hidden_dropout_prob
-            self.attention_probs_dropout_prob = attention_probs_dropout_prob
-            self.attn_proj_biases = attn_proj_biases
-            self.max_position_embeddings = max_position_embeddings
-            self.pos_emb_type = PositionalEmbeddingsTypes[pos_emb_type.upper()]
-            self.relpe_type = relpe_type
-            self.type_vocab_size = type_vocab_size
+            self.d_model = d_model
+            self.hidden_size = d_model
+            self.d_state = d_state
+            self.l_max = l_max
+            self.channels = channels
+            self.bidirectional = bidirectional
+            self.activation = activation
+            self.postact = postact
+            self.hyper_act = hyper_act
+            self.dropout = dropout
+            self.tie_dropout = tie_dropout
+            self.bottleneck = bottleneck
+            self.gate = gate
+            self.transposed = transposed
+            self.verbose = verbose
+            self.embedding_ln_type = embedding_ln_type
             self.initializer_range = initializer_range
-            self.causal = causal
-            self.local_attention = local_attention
-            self.window_size = window_size
+            self.final_ln_type = final_ln_type
+            self.classifier_bias = classifier_bias
         else:
             raise ValueError(
                 "First argument must be either a vocabulary size (int)"
@@ -126,7 +130,7 @@ class S4Config(object):
     @classmethod
     def from_dict(cls, json_object):
         """Constructs a `ModelConfig` from a Python dictionary of parameters."""
-        config = TransformerConfig(vocab_size_or_config_json_file=-1)
+        config = S4Config(vocab_size_or_config_json_file=-1)
         for key, value in json_object.items():
             config.__dict__[key] = value
         if torch.distributed.get_rank() == 0:
@@ -184,85 +188,32 @@ class S4Embeddings(nn.Module):
         self.word_embeddings = nn.Embedding(config.vocab_size,
                                             config.hidden_size)
         #self.word_embeddings = RealNumberEmbedding(config)
-        if config.pos_emb_type == PositionalEmbeddingsTypes.LEARNED:
-            self.position_embeddings = nn.Embedding(config.max_position_embeddings,
-                                                    config.hidden_size)
-            self.add_pos_emb_fn = self.add_learned_posit_embeddings
-
-        elif config.pos_emb_type == PositionalEmbeddingsTypes.SINUSOIDAL:
-            self.position_embeddings = SinusoidalPositionalEncoding(
-               config.max_position_embeddings, config.hidden_size
-            )
-            self.add_pos_emb_fn = self.add_sinusoidal_posit_embeddings
-        else:
-            self.add_pos_emb_fn = lambda x: x
-
-        if config.token_type_embeddings:
-            self.token_type_embeddings = nn.Embedding(config.type_vocab_size,
-                                                      config.hidden_size)
-            self.add_tok_typ_emb_fn = self.add_token_type_embeddings
-        else:
-            self.add_tok_typ_emb_fn = lambda x, y: x
-
         # By default nn.Hardtanh
         self.LayerNorm = Activation2Class[config.embedding_ln_type](
             hidden_size=config.hidden_size
         )
-        self.dropout = nn.Dropout(config.embedding_dropout)
-
-    def add_learned_posit_embeddings(self, word_embeddings):
-        seq_length = word_embeddings.size(1)
-        position_ids = torch.arange(seq_length,
-                                    dtype=torch.long,
-                                    device=word_embeddings.device)
-        position_ids = position_ids.unsqueeze(0)#.expand(word_embeddings.size(0), -1)
-        position_embeddings = self.position_embeddings(position_ids)
-        return position_embeddings + word_embeddings
-
-    def add_sinusoidal_posit_embeddings(self, word_embeddings):
-        return self.position_embeddings(word_embeddings) + word_embeddings
-
-    def add_token_type_embeddings(self, embeddings, token_type_ids=None):
-        if token_type_ids is None:
-           return embeddings
-        token_type_embeddings = self.token_type_embeddings(token_type_ids)
-        return token_type_embeddings + embeddings
 
     def forward(self, input_ids, attention_mask, token_type_ids=None):
-        words_embeddings = self.word_embeddings(input_ids)
+        embeddings = self.word_embeddings(input_ids)
 
-        embeddings = self.add_pos_emb_fn(words_embeddings)
-        embeddings = self.add_tok_typ_emb_fn(embeddings, token_type_ids)
         # embeddings = embeddings / embeddings.abs().max(axis=-1, keepdim=True)[0]
         # embeddings = embeddings * attention_mask[0]
         embeddings = self.LayerNorm(embeddings)
         # embeddings = clip_grad_values(embeddings)
         # embeddings = self.LayerNorm(embeddings, attention_mask)
-        embeddings = self.dropout(embeddings)
         return embeddings
 
     def forward_unpadded(self, input_ids, lengths, token_type_ids=None):
-        position_ids = torch.cat(
-            [torch.arange(seq_length, dtype=torch.long, device=input_ids.device)
-             for seq_length in lengths],
-            dim=0
-        )
+    
         words_embeddings = self.word_embeddings(input_ids)
-        position_embeddings = self.position_embeddings(position_ids)
-        token_type_embeddings = self.token_type_embeddings(token_type_ids)
 
-        embeddings = words_embeddings + position_embeddings + token_type_embeddings
+        embeddings = words_embeddings
         embeddings = self.LayerNorm(embeddings)
         return embeddings
 
 class S4Encoder(nn.Module):
     def __init__(self, config: ModelConfig, args):
         super(S4Encoder, self).__init__()
-        if (config.pos_emb_type == PositionalEmbeddingsTypes.RELPE and
-                config.relpe_type is not None):
-            self.relpe_type = RelPEType[config.relpe_type.upper()]
-        else:
-            self. relpe_type = RelPEType.DUMMY
         # Added later to make it similar to GPT-2
         if config.final_ln_type is not None:
             self.FinalLayerNorm = Activation2Class[config.final_ln_type](config.hidden_size)
@@ -270,11 +221,6 @@ class S4Encoder(nn.Module):
         else:
             self.final_transform_fn = lambda x: x
 
-        self.rope_cache = RelPETypeToClass[self.relpe_type](
-            config.max_position_embeddings, #args.max_seq_length
-            config.hidden_size // config.num_attention_heads,
-            num_heads=config.num_attention_heads
-        )
         layer_class = S4
         layers = [layer_class(config)
                   for n in range(config.num_hidden_layers)]
@@ -283,13 +229,12 @@ class S4Encoder(nn.Module):
 
     def forward(self,
                 hidden_states: torch.Tensor,
-                attention_mask,
                 output_all_encoded_layers=True,
                 checkpoint_activations=False):
         all_encoder_layers = []
 
         for i, layer_module in enumerate(self.layer):
-            hidden_states = layer_module(hidden_states, attention_mask, self.rope_cache)
+            hidden_states = layer_module(hidden_states)
             # if output_all_encoded_layers:
             #    all_encoder_layers.append(hidden_states)
 
@@ -395,12 +340,6 @@ class S4PreTrainedModel(nn.Module):
 
     def __init__(self, config, *inputs, **kwargs):
         super(S4PreTrainedModel, self).__init__()
-        if not isinstance(config, ModelConfig):
-            raise ValueError(
-                "Parameter config in `{}(config)` should be an instance of class `ModelConfig`. "
-                "To create a model from a Google pretrained model use "
-                "`model = {}.from_pretrained(PRETRAINED_MODEL_NAME)`".format(
-                    self.__class__.__name__, self.__class__.__name__))
         self.config = config
 
     def resize_learned_pos_embeddings(self, src: OrderedDict, dst: nn.Module) -> None:
@@ -410,29 +349,8 @@ class S4PreTrainedModel(nn.Module):
             src: PyTorch state dict of a Deepspeed checkpoint (source model)
             dst: PyTorch module of the destination model
         """
-        if self.config.pos_emb_type != PositionalEmbeddingsTypes.LEARNED:
-            logger.warning(
-                "Attempted to resize positional embeddings. In this instance "
-                "they are not learnable, there is no need for resizing.")
-            dst.load_state_dict(src, strict=False)
-            return
-
-        old_embeds = src["bert.embeddings.position_embeddings.weight"]
-        num_old_embeds = old_embeds.shape[0]
-        num_new_embeds = self.config.max_position_embeddings
-        new_embeddings = (torch.zeros(num_new_embeds, self.config.hidden_size)
-                          .to(old_embeds.device)
-                          .to(old_embeds.dtype))
-        num_repeats = (num_new_embeds + num_old_embeds - 1) // num_old_embeds
-        new_embeddings.data[:num_new_embeds, :] = (
-            old_embeds.data.detach().clone()
-            .repeat(num_repeats, 1)[:num_new_embeds, :]
-        )
-        src["bert.embeddings.position_embeddings.weight"] = new_embeddings
-        logger.info(f"Successfully restored learned positional embeddings to "
-                    f"size {self.config.max_position_embeddings}")
-        del old_embeds
-        dst.load_state_dict(src, strict=False)
+      
+        pass
 
     def get_num_params(self, non_embedding=True):
         """
@@ -444,8 +362,6 @@ class S4PreTrainedModel(nn.Module):
         n_params = sum(p.numel() for p in self.parameters())
         if non_embedding:
             n_params -= self.embeddings.word_embeddings.weight.numel()
-            n_params -= self.embeddings.position_embeddings.weight.numel()
-            n_params -= self.embeddings.token_type_embeddings.weight.numel()
         return n_params
 
     def init_bert_weights(self, module):
@@ -554,10 +470,7 @@ class S4Model(S4PreTrainedModel):
                                            token_type_ids)
         #attention_mask = self.posit_embs(attention_mask)
         encoded_layers = self.encoder(
-            embedding_output,
-            attention_mask,
-            output_all_encoded_layers=output_all_encoded_layers,
-            checkpoint_activations=checkpoint_activations)
+            embedding_output)
         encoded_layers = [embedding_output] + encoded_layers
         sequence_output = encoded_layers[-1]
         pooled_output = self.pooler(sequence_output)
@@ -1018,9 +931,7 @@ class S4ForSequenceClassification(S4PreTrainedModel):
     def __init__(self, config, args):
         super(S4ForSequenceClassification, self).__init__(config)
         self.num_labels = args.num_labels if hasattr(args, "num_labels") else 2
-        self.window_size = config.window_size
         self.bert = S4Model(config, args)
-        self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.classifier = nn.Linear(config.hidden_size, self.num_labels,
                                     bias=config.classifier_bias)
         """
@@ -1032,7 +943,6 @@ class S4ForSequenceClassification(S4PreTrainedModel):
         self.apply(self.init_bert_weights)
         if hasattr(args, "zero_init_pooler") and args.zero_init_pooler:
             self.bert.pooler.dense_act.weight.data.zero_()
-        self.use_local_attention = config.local_attention
 
     def forward(self,
                 input_ids,
@@ -1048,14 +958,6 @@ class S4ForSequenceClassification(S4PreTrainedModel):
             attention_mask /
             attention_mask.sum(axis=-1, keepdim=True).pow(1. / 3)
         ).to(dtype).unsqueeze(-1)
-        if self.use_local_attention:
-            local_attention_mask = (
-                    attention_mask / self.window_size ** (1. / 3)
-            ).to(dtype).unsqueeze(-1)
-            extended_attention_mask = (
-                local_attention_mask,
-                extended_attention_mask
-            )
 
         _, pooled_output = self.bert(input_ids,
                                      token_type_ids,

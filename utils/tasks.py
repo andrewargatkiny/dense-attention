@@ -7,7 +7,7 @@ from src.other_models import (TransformerForPreTraining,
 from src.modeling import DANetForPreTraining, BertForSequenceClassification, BertForAANMatching, \
     BertForRegression
 
-from src.modeling_s4 import S4ForPreTraining, S4ForSequenceClassification
+from src.modeling_s4 import S4ForPreTraining, S4ForSequenceClassification, S4Config
 
 from src.other_models.bert_hf import BertHFForSequenceClassification
 from data.dataset import (LRADataset, LRATextDataset,
@@ -23,7 +23,7 @@ class SequenceClassification:
     """Task for basic sequence classification which treats all sequences as
     having same length."""
     dataset_type = LRADataset
-    model_type = S4ForSequenceClassification
+    model_type = BertForSequenceClassification
     eval_func = eval_classification_task
 
 @dataclass
@@ -31,8 +31,9 @@ class S4SequenceClassification:
     """Task for basic sequence classification which treats all sequences as
     having same length."""
     dataset_type = LRADataset
-    model_type = BertForSequenceClassification
+    model_type = S4ForSequenceClassification
     eval_func = eval_classification_task
+    config_type = S4Config
 
 @dataclass
 class TextClassification:
