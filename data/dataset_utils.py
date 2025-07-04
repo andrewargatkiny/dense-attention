@@ -191,7 +191,7 @@ class ShardedDatasetWrapper:
                     "chunk_size", 2 ** 20)
                 # A pointer which moves `chunk_size` entries over the
                 # dataset each epoch.
-                self.current_offsets[source["name"]] = 0
+                self.current_offsets[source["name"]] = source.get("offset", 0)
         # Initialize dataset files
         self.dataset_path = os.path.join(
             base_dir,
