@@ -57,6 +57,8 @@ class DummyRelPE(RelPEBase):
     def apply_local_relpe(self, x: torch.Tensor, window_size, num_windows):
         return x
 
+    def apply_local_relpe2(self, x: torch.Tensor, window_size, num_windows):
+        return x
 
 class RoPE(RelPEBase):
     def __init__(self, seq_len: int, n_elem: int,
