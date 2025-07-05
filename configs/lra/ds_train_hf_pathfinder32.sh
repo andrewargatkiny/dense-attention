@@ -52,9 +52,9 @@ fi
 
 mkdir -p $OUTPUT_DIR
 
-NCCL_TREE_THRESHOLD=0 deepspeed --include localhost:"$NODE" --master_port "$MASTER_PORT" ${base_dir}/deepspeed_train.py \
+DS_ACCELERATOR="cpu" deepspeed ${base_dir}/deepspeed_train.py \
 --cf "$CONFIG" \
---max_seq_length 1024 \
+--max_seq_length 256 \
 --task_type "hf_sequence_classification" \
 --output_dir $OUTPUT_DIR \
 --deepspeed \

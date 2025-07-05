@@ -1,6 +1,5 @@
 from __future__ import division, absolute_import, print_function, unicode_literals
 
-from transformers import AutoConfig
 import copy
 import json
 import sys
@@ -52,9 +51,7 @@ class ModelConfig(object):
                  local_scheme="l_sl_g",
                  hybrid=False,
                  transformer_heads=None,
-                 attn_proj_biases=False,
-                 hf_model_name_or_path=None,
-                 **kwargs
+                 attn_proj_biases=False
                  ):
         """Constructs ModelConfig.
 
@@ -204,18 +201,6 @@ class ModelConfig(object):
             self.hybrid = hybrid
             self.transformer_heads = transformer_heads
             self.attn_proj_biases = attn_proj_biases
-            self.hf_config = None
-            if hf_model_name_or_path:
-                self.hf_config = AutoConfig.from_pretrained(hf_model_name_or_path)
-                self.hidden_size = self.hf_config.hidden_size
-                self.num_attention_heads = self.hf_config.num_attention_heads
-                self.num_hidden_layers = self.hf_config.num_hidden_layers
-                self.hidden_act = self.hf_config.hidden_act
-                self.vocab_size = self.hf_config.vocab_size
-                self.hf_config.max_position_embeddings = self.max_position_embeddings
-                
-            for key, value in kwargs.items():
-                setattr(self, key, value)
 
         else:
             raise ValueError(

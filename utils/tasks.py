@@ -6,7 +6,7 @@ from src.other_models import (TransformerForPreTraining,
                               TransformerForRegression, TransformerConfig)
 from src.modeling import DANetForPreTraining, BertForSequenceClassification, BertForAANMatching, \
     BertForRegression
-from src.hf_modeling import HFForAANMatching, HFForPreTraining, HFForRegression, HFForSequenceClassification
+from src.other_models.hf_modeling import HFForAANMatching, HFForPreTraining, HFForRegression, HFForSequenceClassification
 from src.other_models.bert_hf import BertHFForSequenceClassification
 from data.dataset import (LRADataset, LRATextDataset,
                           DatasetForMLM, TextDatasetForMLM, AANDataset,
