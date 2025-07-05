@@ -3,6 +3,7 @@ import sys
 import time
 import logging
 import shutil
+from operator import attrgetter
 
 import numpy as np
 import random
@@ -16,6 +17,8 @@ from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm
 
 from src.model_config import ModelConfig
+from src.modeling import get_num_params
+from src.other_models.hf_modeling import HFConfig
 from utils.tasks import TaskRegistry
 from train_arguments import get_argument_parser, override_configs
 from utils.logger import Logger
@@ -107,7 +110,6 @@ def get_dataloader(args, dataset: Dataset):
 def pretrain_validation(args, dataset, series_name, index, model):
 
     config = args.config
-    num_layers = config["model_config"]["num_hidden_layers"]
     logger = args.logger
     eval_bs = args.train_micro_batch_size_per_gpu * args.eval_bs_ratio
     max_validation_samples = args.max_validation_samples
@@ -118,6 +120,7 @@ def pretrain_validation(args, dataset, series_name, index, model):
     logger.info(
         f"Validation micro batch size: {eval_bs}")
     if args.dense_attention:
+        num_layers = config["model_config"]["num_hidden_layers"]
         update_weights_scalers(model, num_layers)
     model.eval()
 
@@ -160,7 +163,6 @@ def train(args,
 
     current_data_sample_count = global_data_samples
     rank = dist.get_rank()
-    num_layers = args.config["model_config"]["num_hidden_layers"]
 
     config = args.config
     logger = args.logger
@@ -178,12 +180,12 @@ def train(args,
     lr_this_step = config["training"]["learning_rate"]
     inner_optimizer = optimizer if not args.bf16 else optimizer.optimizer
     if args.dense_attention:
+        num_layers = args.config["model_config"]["num_hidden_layers"]
         update_weights_scalers(model, num_layers)
 
     for group in optimizer.param_groups:
         group['lr'] = lr_this_step
         if group['name'] != 'others_with_no_wd': group['weight_decay'] = args.config["training"]["weight_decay"]
-
     for _, batch in enumerate(tqdm(dataset_iterator, smoothing=1)):
         try:
             step_start = time.time()
@@ -313,7 +315,7 @@ def train(args,
 def update_weights_scalers(model, num_layers):
     """Update weights scalers of DenseAttention Model"""
     for i in range(num_layers):
-        ffn = model.bert.encoder.layer[i].ffn
+        ffn = attrgetter(model.path_to_bert)(model).encoder.layer[i].ffn
         ffn.adjust_norm_ratios()
 
 
@@ -441,8 +443,16 @@ def report_model_activations(args, model, data, step, bins=20, **kwargs):
         def getActivation(name):
             # the hook signature
             def hook(model, input, output):
-                if not isinstance(output, (list, tuple)):
-                    activations[name] = output.cpu().float().numpy()
+                if isinstance(output, torch.Tensor):
+                    tensor_output = output
+                elif hasattr(output, 'last_hidden_state'):
+                    tensor_output = output.last_hidden_state
+                elif isinstance(output, (tuple, list)):
+                    for item in output:
+                        if isinstance(item, torch.Tensor):
+                            tensor_output = item
+                            break
+                activations[name] = tensor_output.detach().cpu().float().numpy()
             return hook
         hooks = []
         if args.use_torch_compile:
@@ -477,7 +487,6 @@ def report_model_activations(args, model, data, step, bins=20, **kwargs):
                     title=f'nans and infs: {name}', series='n of -infs',
                     value=len(values[np.isneginf(values)].ravel()), iteration=step
                 )
-
             if finite_values.size == 0: return
             try:
                 vals = values#.mean(axis=-1)
@@ -636,6 +645,16 @@ def construct_arguments():
 
 
 def prepare_optimizer_parameters(args, model):
+    # if hasattr(attrgetter(model.path_to_bert)(model), 'hf_config'):  # HF model detected
+    #     param_optimizer = list(model.named_parameters())
+    #     no_decay = ['bias', 'LayerNorm.bias', 'LayerNorm.weight']
+    #     return [
+    #         {'params': [p for n, p in param_optimizer if not any(nd in n for nd in no_decay)],
+    #          'weight_decay': args.config["training"]["weight_decay"], 'name': 'others_with_wd'},
+    #         {'params': [p for n, p in param_optimizer if any(nd in n for nd in no_decay)],
+    #          'weight_decay': 0.0, 'name': 'others_with_no_wd'}
+    #     ]
+    # else:
     config = args.config
     # deepspeed_config = json.load(
     #     open(args.deepspeed_config, 'r', encoding='utf-8'))
@@ -643,7 +662,7 @@ def prepare_optimizer_parameters(args, model):
     #params_to_optimize = [n for n in params_to_optimize if #'pooler' not in n[0] and
     #                   'embeddings' not in n[0] and 'layer' not in n[0]]
     no_decay_list = ['bias', 'LayerNorm.bias', 'LayerNorm.weight',
-                     'activation.weight', 'layer_norm.weight']
+                    'activation.weight', 'layer_norm.weight']
     if args.no_decay_embeddings:
         no_decay_list += ['embeddings']
     if args.no_decay_pooler:
@@ -654,30 +673,30 @@ def prepare_optimizer_parameters(args, model):
         weight_decay = 0.01
 
 
-    groups = [{'params': list(model.bert.embeddings.parameters()),
-               'lr': 0.0,
-               'weight_decay': weight_decay,
-               'name': 'embeddings'}]
-    for i in range(len(model.bert.encoder.layer)):
+    groups = [{'params': list(attrgetter(model.path_to_bert)(model).embeddings.parameters()),
+            'lr': 0.0,
+            'weight_decay': weight_decay,
+            'name': 'embeddings'}]
+    for i in range(len(attrgetter(model.path_to_bert)(model).encoder.layer)):
         if args.dense_attention:
             # If some kind of layer norm in attention layer has learnable
             # params, they wouldn't be updated.
             groups.append({
-                'params': list(model.bert.encoder.layer[i].attention.parameters()),
+                'params': list(attrgetter(model.path_to_bert)(model).encoder.layer[i].attention.parameters()),
                 'lr': 0.0,
                 'weight_decay': weight_decay,
                 'name': f'layer_{i}_attention'
             })
-            if hasattr(model.bert.encoder.layer[i], 'ffn'):
+            if hasattr(attrgetter(model.path_to_bert)(model).encoder.layer[i], 'ffn'):
                 groups.append({
-                    'params': list(model.bert.encoder.layer[i].ffn.parameters()),
+                    'params': list(attrgetter(model.path_to_bert)(model).encoder.layer[i].ffn.parameters()),
                     'lr': 0.0,
                     'weight_decay': weight_decay,
                     'name': f'layer_{i}_ffn'
                 })
         else:
             groups.append({
-                'params': list(model.bert.encoder.layer[i].parameters()),
+                'params': list(attrgetter(model.path_to_bert)(model).encoder.layer[i].parameters()),
                 'lr': 0.0,
                 'weight_decay': weight_decay,
                 'name': f'layer_{i}_attention'
@@ -695,7 +714,7 @@ def prepare_optimizer_parameters(args, model):
     }, {
         'params':
         [p for n, p in params_to_optimize
-         if any(stop_word in n for stop_word in no_decay_list)],
+        if any(stop_word in n for stop_word in no_decay_list)],
         'lr': 0.0,
         'weight_decay': 0.0,
         'name': 'others_with_no_wd'
@@ -710,7 +729,7 @@ def prepare_model_optimizer(args):
     deepspeed.init_distributed(dist_backend=args.dict_backend)
     args.local_rank = int(os.environ['LOCAL_RANK'])
     model_class = args.task.model_type
-    config_class = ModelConfig
+    config_class = HFConfig if 'hf_model_name_or_path' in args.config["model_config"] else ModelConfig
     if hasattr(args.task, "config_type"):
         config_class = args.task.config_type
 
@@ -803,14 +822,14 @@ def run(args, model, optimizer, start_epoch):
     logger = args.logger
     task = args.task
     if args.materialize_ffn_weights:
-        for layer in model.bert.encoder.layer:
+        for layer in attrgetter(model.path_to_bert)(model).encoder.layer:
             layer.ffn.rescale_weights()
     # if args.use_nvidia_dataset:
     #     pretrain_dataset_provider = NvidiaBertDatasetProvider(args)
     # else:
     #     pretrain_dataset_provider = BingBertDatasetProvider(args)
     print(model)
-    print(f"Total parameters in the model: {model.get_num_params(non_embedding=False)}")
+    print(f"Total parameters in the model: {get_num_params(model, non_embedding=False)}")
     print("Loading train dataset")
 
     if args.use_sharded_dataset:
