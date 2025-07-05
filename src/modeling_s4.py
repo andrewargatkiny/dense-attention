@@ -229,12 +229,13 @@ class S4Encoder(nn.Module):
 
     def forward(self,
                 hidden_states: torch.Tensor,
+                s4_state = None,
                 output_all_encoded_layers=True,
                 checkpoint_activations=False):
         all_encoder_layers = []
 
         for i, layer_module in enumerate(self.layer):
-            hidden_states = layer_module(hidden_states)
+            hidden_states, s4_state = layer_module(hidden_states, s4_state)
             # if output_all_encoded_layers:
             #    all_encoder_layers.append(hidden_states)
 
@@ -960,8 +961,6 @@ class S4ForSequenceClassification(S4PreTrainedModel):
         ).to(dtype).unsqueeze(-1)
 
         _, pooled_output = self.bert(input_ids,
-                                     token_type_ids,
-                                     attention_mask=extended_attention_mask,
                                      output_all_encoded_layers=False)
         pooled_output = self.dropout(pooled_output)
         logits = self.classifier(pooled_output)
