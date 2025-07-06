@@ -62,7 +62,7 @@ class S4Config(object):
                  dropout=0.0, tie_dropout=False,
                  bottleneck=None,
                  gate=None,
-                 transposed=True,
+                 transposed=False,
                  verbose=False,
                  embedding_ln_type ="hardtanh",
                  initializer_range = 0.2,
@@ -233,7 +233,6 @@ class S4Encoder(nn.Module):
                 output_all_encoded_layers=True,
                 checkpoint_activations=False):
         all_encoder_layers = []
-
         for i, layer_module in enumerate(self.layer):
             hidden_states, s4_state = layer_module(hidden_states, s4_state)
             # if output_all_encoded_layers:
@@ -474,11 +473,10 @@ class S4Model(S4PreTrainedModel):
             embedding_output)
         encoded_layers = [embedding_output] + encoded_layers
         sequence_output = encoded_layers[-1]
-        pooled_output = self.pooler(sequence_output)
 
         # if not output_all_encoded_layers:
         encoded_layers = encoded_layers[-1]
-        return encoded_layers, pooled_output
+        return encoded_layers
 
     def forward_unpadded(self, input_ids, token_type_ids,
                        scalers, lengths,
@@ -501,9 +499,8 @@ class S4Model(S4PreTrainedModel):
             checkpoint_activations=checkpoint_activations)
         encoded_layers = [embedding_output] + encoded_layers
         sequence_output = encoded_layers[-1]
-        pooled_output = self.pooler(sequence_output, cs_lengths)
         encoded_layers = encoded_layers[-1]
-        return encoded_layers, pooled_output
+        return encoded_layers
 
 
 class S4ForPreTraining(S4PreTrainedModel):
@@ -960,11 +957,10 @@ class S4ForSequenceClassification(S4PreTrainedModel):
             attention_mask.sum(axis=-1, keepdim=True).pow(1. / 3)
         ).to(dtype).unsqueeze(-1)
 
-        _, pooled_output = self.bert(input_ids,
+        pooled_output = self.bert(input_ids,
                                      output_all_encoded_layers=False)
-        pooled_output = self.dropout(pooled_output)
         logits = self.classifier(pooled_output)
-
+        logits = logits[:,0]
         if label is not None:
             loss_fct = CrossEntropyLoss()
             loss = loss_fct(logits.view(-1, self.num_labels), label.view(-1))
