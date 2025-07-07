@@ -50,11 +50,10 @@ mkdir -p $OUTPUT_DIR
 
 DS_ACCELERATOR="cpu" deepspeed ${base_dir}/deepspeed_train.py \
 --cf "$CONFIG" \
---max_seq_length 4000 \
+--max_seq_length 24 \
 --output_dir $OUTPUT_DIR \
---task_type "text_classification" \
+--task_type "hf_text_classification" \
 --deepspeed \
---dense_attention \
 --eval_train_data \
 --eval_test_data \
 --max_validation_samples 25000 \
