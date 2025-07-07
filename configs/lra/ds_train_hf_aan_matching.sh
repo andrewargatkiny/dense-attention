@@ -50,11 +50,10 @@ mkdir -p $OUTPUT_DIR
 
 NCCL_TREE_THRESHOLD=0 deepspeed --include localhost:"$NODE" --master_port "$MASTER_PORT" ${base_dir}/deepspeed_train.py \
 --cf "$CONFIG" \
---max_seq_length 4000 \
+--max_seq_length 200 \
 --output_dir $OUTPUT_DIR \
---task_type "texts_matching" \
+--task_type "hf_texts_matching" \
 --deepspeed \
---dense_attention \
 --eval_train_data \
 --eval_test_data \
 --max_validation_samples 18500 \

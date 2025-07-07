@@ -639,16 +639,6 @@ def construct_arguments():
 
 
 def prepare_optimizer_parameters(args, model):
-    # if hasattr(attrgetter(model.path_to_bert)(model), 'hf_config'):  # HF model detected
-    #     param_optimizer = list(model.named_parameters())
-    #     no_decay = ['bias', 'LayerNorm.bias', 'LayerNorm.weight']
-    #     return [
-    #         {'params': [p for n, p in param_optimizer if not any(nd in n for nd in no_decay)],
-    #          'weight_decay': args.config["training"]["weight_decay"], 'name': 'others_with_wd'},
-    #         {'params': [p for n, p in param_optimizer if any(nd in n for nd in no_decay)],
-    #          'weight_decay': 0.0, 'name': 'others_with_no_wd'}
-    #     ]
-    # else:
     config = args.config
     deepspeed_config = json.load(
         open(args.deepspeed_config, 'r', encoding='utf-8'))
