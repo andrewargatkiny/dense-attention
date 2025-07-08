@@ -236,6 +236,15 @@ class HFGlueWithAllMetrics:
     model_type = HFForSequenceClassification
     eval_func = eval_glue_tasks
 
+@dataclass
+class HFSequenceClassificationMLM:
+    """Task for basic sequence classification which treats all sequences as
+    having same length with MLM and classification objectives."""
+    dataset_type = DatasetForMLM
+    model_type = HFForPreTraining
+    eval_func = eval_mlm_classification_task
+
+
 class TaskRegistry:
     _registry: Dict[str, Type] = {}
 
@@ -284,3 +293,4 @@ TaskRegistry.register_task("hf_bert_pretraining", HFBertPretraining)
 TaskRegistry.register_task("hf_glue_for_regression", HFGlueForRegression)
 TaskRegistry.register_task("hf_glue_with_acc_metrics", HFGlueWithAccMetrics)
 TaskRegistry.register_task("hf_glue_with_all_metrics", HFGlueWithAllMetrics)
+TaskRegistry.register_task("hf_sequence_classification_mlm", HFSequenceClassificationMLM)
