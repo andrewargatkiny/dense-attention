@@ -244,6 +244,14 @@ class HFSequenceClassificationMLM:
     model_type = HFForPreTraining
     eval_func = eval_mlm_classification_task
 
+@dataclass
+class HFTextClassificationMLM:
+    """Task with generic text-like sequences of possibly different lengths
+    with MLM and classification objectives."""
+    dataset_type = TextDatasetForMLM
+    model_type = HFForPreTraining
+    eval_func = eval_mlm_classification_task
+
 
 class TaskRegistry:
     _registry: Dict[str, Type] = {}
@@ -266,7 +274,7 @@ class TaskRegistry:
 TaskRegistry.register_task("sequence_classification", SequenceClassification) #done
 TaskRegistry.register_task("text_classification", TextClassification) #done
 TaskRegistry.register_task("texts_matching", TextsMatching) #done
-TaskRegistry.register_task("sequence_classification_mlm", SequenceClassificationMLM) #todo ez
+TaskRegistry.register_task("sequence_classification_mlm", SequenceClassificationMLM) #done
 TaskRegistry.register_task("text_classification_mlm", TextClassificationMLM) #todo ez
 TaskRegistry.register_task("aan_text_classification_mlm", AANTextClassificationMLM) #todo ez
 TaskRegistry.register_task("bert_pretraining", BertPretraining) #done? (test with gpu: configs/bert/ds_train_hf_bert.sh)
@@ -294,3 +302,4 @@ TaskRegistry.register_task("hf_glue_for_regression", HFGlueForRegression)
 TaskRegistry.register_task("hf_glue_with_acc_metrics", HFGlueWithAccMetrics)
 TaskRegistry.register_task("hf_glue_with_all_metrics", HFGlueWithAllMetrics)
 TaskRegistry.register_task("hf_sequence_classification_mlm", HFSequenceClassificationMLM)
+TaskRegistry.register_task("hf_text_classification_mlm", HFTextClassificationMLM)
