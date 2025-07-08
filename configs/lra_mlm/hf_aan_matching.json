@@ -1,0 +1,64 @@
+{
+    "name": "lra-experiment",
+    "model_config": {
+        "hf_model_name_or_path": "prajjwal1/bert-tiny",
+        "vocab_size_or_config_json_file": 256,
+        "hidden_size": 12,
+        "num_hidden_layers": 1,
+        "num_attention_heads": 2,
+        "max_position_embeddings": 256
+    },
+    "data": {
+        "training": {
+            "inputs1": {
+                "inputs": "input/train.src",
+                "masks": "input/train.mask",
+                "labels": "label/train.label"
+            },
+            "inputs2": {
+                "inputs": "input/train.src",
+                "masks": "input/train.mask",
+                "labels": "label/train.label"
+            }
+        },
+        "validation": {
+            "inputs1": {
+                "inputs": "input/valid.src",
+                "masks": "input/valid.mask",
+                "labels": "label/valid.label"
+            },
+            "inputs2": {
+                "inputs": "input/valid.src",
+                "masks": "input/valid.mask",
+                "labels": "label/valid.label"
+            }
+        },
+        "test": {
+            "inputs1": {
+                "inputs": "input/test.src",
+                "masks": "input/test.mask",
+                "labels": "label/test.label"
+            },
+            "inputs2": {
+                "inputs": "input/test.src",
+                "masks": "input/test.mask",
+                "labels": "label/test.label"
+            }
+        }
+    },
+    "training": {
+        "num_epochs": 1600,
+        "lr_schedule": "constant",
+        "lr_offset": 0.0,
+        "lr_scheduler_params": {
+            "warmup_ratio": 0.1,
+            "warmup_degree": 1,
+            "degree": 0,
+            "one_cycle_steps": 150000
+        },
+        "learning_rate": 1e-3,
+        "weight_decay": 0.0,
+        "num_workers": 4,
+        "async_worker": true
+    }
+}
