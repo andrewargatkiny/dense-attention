@@ -259,6 +259,11 @@ class HFAANTextClassificationMLM:
     model_type = HFForPreTraining
     eval_func = eval_mlm_classification_task
 
+@dataclass
+class HFBertMLM:
+    dataset_type = BertOnlyMLMDataset
+    model_type = HFForPreTraining
+    eval_func = eval_mlm_classification_task
 
 class TaskRegistry:
     _registry: Dict[str, Type] = {}
@@ -283,9 +288,9 @@ TaskRegistry.register_task("text_classification", TextClassification) #done
 TaskRegistry.register_task("texts_matching", TextsMatching) #done
 TaskRegistry.register_task("sequence_classification_mlm", SequenceClassificationMLM) #done
 TaskRegistry.register_task("text_classification_mlm", TextClassificationMLM) #done
-TaskRegistry.register_task("aan_text_classification_mlm", AANTextClassificationMLM) #todo ez
+TaskRegistry.register_task("aan_text_classification_mlm", AANTextClassificationMLM) #done
 TaskRegistry.register_task("bert_pretraining", BertPretraining) #done? (test with gpu: configs/bert/ds_train_hf_bert.sh)
-TaskRegistry.register_task("bert_mlm", BertMLM) #todo ez
+TaskRegistry.register_task("bert_mlm", BertMLM) #needs c4
 TaskRegistry.register_task("gpt_pretraining", GptPretraining) #no need to integrate
 TaskRegistry.register_task("transformer_bert_pretraining", TransformerBertPretraining)
 TaskRegistry.register_task("transformer_bert_mlm", TransformerBertMLM)
@@ -295,7 +300,7 @@ TaskRegistry.register_task("transformer_sequence_mlm", TransformerSequenceMLM)
 TaskRegistry.register_task("glue_with_acc_metrics", GlueWithAccMetrics) #done
 TaskRegistry.register_task("glue_with_all_metrics", GlueWithAllMetrics) #done
 TaskRegistry.register_task("glue_for_regression", GlueForRegression) #done
-TaskRegistry.register_task("glue_pretraining_mlm", GluePretrainingMLM) #todo ez
+TaskRegistry.register_task("glue_pretraining_mlm", GluePretrainingMLM) #no corresponding script
 TaskRegistry.register_task("glue_transformer_with_acc_metrics", GlueTransformerWithAccMetrics)
 TaskRegistry.register_task("glue_hf_with_acc_metrics", GlueHFWithAccMetrics) #no need to integrate
 TaskRegistry.register_task("glue_transformer_with_all_metrics", GlueTransformerWithAllMetrics)
@@ -311,3 +316,4 @@ TaskRegistry.register_task("hf_glue_with_all_metrics", HFGlueWithAllMetrics)
 TaskRegistry.register_task("hf_sequence_classification_mlm", HFSequenceClassificationMLM)
 TaskRegistry.register_task("hf_text_classification_mlm", HFTextClassificationMLM)
 TaskRegistry.register_task("hf_aan_text_classification_mlm", HFAANTextClassificationMLM)
+TaskRegistry.register_task("hf_bert_mlm", HFBertMLM)
