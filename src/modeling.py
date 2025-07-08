@@ -585,6 +585,7 @@ class DANetForPreTraining(DANetPreTrainedModel):
 
     def __init__(self, config: ModelConfig, args):
         super(DANetForPreTraining, self).__init__(config)
+        self.path_to_bert = "bert"
         self.bert = DANetModel(config, args)
         self.num_labels = args.num_labels if hasattr(args, "num_labels") else 2
         self.cls = BertPreTrainingHeads(
@@ -686,7 +687,6 @@ class DANetForPreTraining(DANetPreTrainedModel):
                 local_attention_mask,
                 extended_attention_mask
             )
-
         encoded_layers, pooled_output = self.bert(
             input_ids,
             token_type_ids,
