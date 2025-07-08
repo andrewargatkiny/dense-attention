@@ -220,6 +220,21 @@ class HFGlueForRegression:
     model_type = HFForRegression
     eval_func = eval_regression_task
 
+@dataclass
+class HFGlueWithAccMetrics:
+    """Task for fine-tuning on some of the GLUE benchmark with accuracy as
+    the evaluation metric"""
+    dataset_type = GlueBertDataset
+    model_type = HFForSequenceClassification
+    eval_func = eval_classification_task
+
+@dataclass
+class HFGlueWithAllMetrics:
+    """Task for fine-tuning on some of the GLUE benchmark with accuracy, F1
+    and Matthews correlation as the evaluation metric"""
+    dataset_type = GlueBertDataset
+    model_type = HFForSequenceClassification
+    eval_func = eval_glue_tasks
 
 class TaskRegistry:
     _registry: Dict[str, Type] = {}
@@ -239,30 +254,33 @@ class TaskRegistry:
         return cls._registry[name]
 
 
-TaskRegistry.register_task("sequence_classification", SequenceClassification)
-TaskRegistry.register_task("text_classification", TextClassification)
-TaskRegistry.register_task("texts_matching", TextsMatching)
-TaskRegistry.register_task("sequence_classification_mlm", SequenceClassificationMLM)
-TaskRegistry.register_task("text_classification_mlm", TextClassificationMLM)
-TaskRegistry.register_task("aan_text_classification_mlm", AANTextClassificationMLM)
-TaskRegistry.register_task("bert_pretraining", BertPretraining)
-TaskRegistry.register_task("bert_mlm", BertMLM)
-TaskRegistry.register_task("gpt_pretraining", GptPretraining)
+TaskRegistry.register_task("sequence_classification", SequenceClassification) #done
+TaskRegistry.register_task("text_classification", TextClassification) #done
+TaskRegistry.register_task("texts_matching", TextsMatching) #done
+TaskRegistry.register_task("sequence_classification_mlm", SequenceClassificationMLM) #todo ez
+TaskRegistry.register_task("text_classification_mlm", TextClassificationMLM) #todo ez
+TaskRegistry.register_task("aan_text_classification_mlm", AANTextClassificationMLM) #todo ez
+TaskRegistry.register_task("bert_pretraining", BertPretraining) #done? (test with gpu: configs/bert/ds_train_hf_bert.sh)
+TaskRegistry.register_task("bert_mlm", BertMLM) #todo ez
+TaskRegistry.register_task("gpt_pretraining", GptPretraining) #no need to integrate
 TaskRegistry.register_task("transformer_bert_pretraining", TransformerBertPretraining)
 TaskRegistry.register_task("transformer_bert_mlm", TransformerBertMLM)
-TaskRegistry.register_task("transformer_gpt_pretraining", TransformerGptPretraining)
+TaskRegistry.register_task("transformer_gpt_pretraining", TransformerGptPretraining) #no need to integrate
 TaskRegistry.register_task("transformer_sequence_classification", TransformerSequenceClassification)
 TaskRegistry.register_task("transformer_sequence_mlm", TransformerSequenceMLM)
-TaskRegistry.register_task("glue_with_acc_metrics", GlueWithAccMetrics)
-TaskRegistry.register_task("glue_with_all_metrics", GlueWithAllMetrics)
-TaskRegistry.register_task("glue_for_regression", GlueForRegression)
-TaskRegistry.register_task("glue_pretraining_mlm", GluePretrainingMLM)
+TaskRegistry.register_task("glue_with_acc_metrics", GlueWithAccMetrics) #done
+TaskRegistry.register_task("glue_with_all_metrics", GlueWithAllMetrics) #done
+TaskRegistry.register_task("glue_for_regression", GlueForRegression) #done
+TaskRegistry.register_task("glue_pretraining_mlm", GluePretrainingMLM) #todo ez
 TaskRegistry.register_task("glue_transformer_with_acc_metrics", GlueTransformerWithAccMetrics)
-TaskRegistry.register_task("glue_hf_with_acc_metrics", GlueHFWithAccMetrics)
+TaskRegistry.register_task("glue_hf_with_acc_metrics", GlueHFWithAccMetrics) #no need to integrate
 TaskRegistry.register_task("glue_transformer_with_all_metrics", GlueTransformerWithAllMetrics)
 TaskRegistry.register_task("glue_transformer_for_regression", GlueTransformerForRegression)
+
 TaskRegistry.register_task("hf_sequence_classification", HFSequenceClassification)
 TaskRegistry.register_task("hf_text_classification", HFTextClassification)
 TaskRegistry.register_task("hf_texts_matching", HFTextsMatching)
 TaskRegistry.register_task("hf_bert_pretraining", HFBertPretraining)
 TaskRegistry.register_task("hf_glue_for_regression", HFGlueForRegression)
+TaskRegistry.register_task("hf_glue_with_acc_metrics", HFGlueWithAccMetrics)
+TaskRegistry.register_task("hf_glue_with_all_metrics", HFGlueWithAllMetrics)
