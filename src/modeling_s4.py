@@ -68,6 +68,8 @@ class S4Config(object):
                  initializer_range = 0.2,
                  final_ln_type = None,
                  classifier_bias = False,
+                 pooler_no_dense = True,
+                 pooler_function = "first",
                  **kwargs):
         """Constructs ModelConfig.
 
@@ -122,6 +124,8 @@ class S4Config(object):
             self.initializer_range = initializer_range
             self.final_ln_type = final_ln_type
             self.classifier_bias = classifier_bias
+            self.pooler_no_dense = pooler_no_dense
+            self.pooler_function = pooler_function
         else:
             raise ValueError(
                 "First argument must be either a vocabulary size (int)"
@@ -243,6 +247,49 @@ class S4Encoder(nn.Module):
         all_encoder_layers.append(hidden_states)
         return all_encoder_layers
 
+class BertPooler(nn.Module):
+    """Combine last layer's representations and optionally transform the result."""
+    def __init__(self, config):
+        super(BertPooler, self).__init__()
+        if config.pooler_function == "first":
+            self.pooler_function = lambda x: x[:, 0]
+        elif config.pooler_function == "max":
+            self.pooler_function = lambda x: torch.max(x, dim=1)[0]
+        else:
+            self.pooler_function = lambda x: x.mean(dim=1)
+
+        self.post_pool_transform = lambda x: x
+        if not config.pooler_no_dense:
+            # This name `dense_act` is kept for compatibility with old trained
+            # models as well as the whole post_pool_transform which should
+            # logically be placed in later classifier modules.
+            self.dense_act = nn.Linear(config.hidden_size, config.hidden_size,
+                                       bias=False)
+            self.activation = Activation2Class[config.pooler_act]()
+            if config.pooler_ln_type is not None:
+                self.layer_norm = Activation2Class[config.pooler_ln_type](config.hidden_size)
+                self.pooler_ln_fn = lambda x: self.layer_norm(x)
+            else:
+                self.pooler_ln_fn = lambda x: x
+            self.post_pool_transform = self.pooler_dense
+
+    def pooler_dense(self, pooled_output):
+        pooled_output = self.activation(self.dense_act(pooled_output))
+        pooled_output = self.pooler_ln_fn(pooled_output)
+        return pooled_output
+
+    def forward(self, hidden_states: torch.Tensor):
+        # We "pool" the model by simply taking the hidden state corresponding
+        # to the first token.
+        pooled_output = self.pooler_function(hidden_states)
+        pooled_output = self.post_pool_transform(pooled_output)
+        return pooled_output
+
+    def forward_unpadded(self, hidden_states, cs_lengths):
+        #first_token_tensor = hidden_states[cs_lengths]
+        first_token_tensor = hidden_states.index_select(dim=0, index=cs_lengths)
+        pooled_output = self.dense_act(first_token_tensor)
+        return pooled_output
 
 
 class S4PredictionHeadTransform(nn.Module):
@@ -434,6 +481,7 @@ class S4Model(S4PreTrainedModel):
         #     args, config.num_attention_heads)
         # self.sparse_attention_utils = get_sparse_attention_utils(self.sparse_attention_config)
         self.encoder = S4Encoder(config, args)
+        self.pooler = BertPooler(config)
         self.apply(self.init_bert_weights)
         logger.info("Init BERT pretrain model")
         logger.info(f"Total parameters in transformer blocks: {self.get_num_params(non_embedding=False)}")
@@ -471,11 +519,7 @@ class S4Model(S4PreTrainedModel):
         #attention_mask = self.posit_embs(attention_mask)
         encoded_layers = self.encoder(
             embedding_output)
-        encoded_layers = [embedding_output] + encoded_layers
-        sequence_output = encoded_layers[-1]
-
-        # if not output_all_encoded_layers:
-        encoded_layers = encoded_layers[-1]
+        encoded_layers = self.pooler(encoded_layers[-1])
         return encoded_layers
 
     def forward_unpadded(self, input_ids, token_type_ids,
@@ -960,7 +1004,6 @@ class S4ForSequenceClassification(S4PreTrainedModel):
         pooled_output = self.bert(input_ids,
                                      output_all_encoded_layers=False)
         logits = self.classifier(pooled_output)
-        logits = logits[:,0]
         if label is not None:
             loss_fct = CrossEntropyLoss()
             loss = loss_fct(logits.view(-1, self.num_labels), label.view(-1))
