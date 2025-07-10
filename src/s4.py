@@ -1398,6 +1398,10 @@ class S4(nn.Module):
         self.gate = config.gate
         self.transposed = config.transposed
         self.verbose = config.verbose
+        kernel_args["measure"] = config.measure
+        kernel_args["mode"] = config.mode
+        if config.disc!=None:
+          kernel_args["disc"] = config.disc
         if config.verbose:
             log.info(f"Constructing S4 (H, N, L) = ({config.d_model}, {config.d_state}, {config.l_max})")
 

@@ -1,0 +1,53 @@
+{
+    "name": "lra-experiment",
+    "model_config": {
+        "vocab_size_or_config_json_file": 264,
+        "d_model": 128,
+        "d_state": 128,
+        "num_hidden_layers": 6,
+        "channels": 1,
+        "bidirectional": true,
+        "activation": "gelu",
+        "postact": "glu",
+        "dropout": 0.0,
+        "tie_dropout": false,
+        "transposed": false,
+        "verbose": false,
+        "measure":"diag-legs",
+        "mode": "diag",
+        "disc" : "dss"
+    },
+    "data": {
+        "training": {
+            "inputs": "input/train.src",
+            "labels": "label/train.label"
+        },
+        "validation": {
+            "inputs": "input/valid.src",
+            "labels": "label/valid.label"
+        },
+        "test": {
+            "inputs": "input/test.src",
+            "labels": "label/test.label"
+        }
+    },
+    "training": {
+        "num_epochs": 210,
+        "lr_scheduler_params": {
+            "warmup_ratio": 0.1,
+            "warmup_degree": 1,
+            "degree": 0,
+            "one_cycle_steps": 320000
+        },
+        "lr_schedule": "cosine",
+        "lr_offset": 0.0,
+        "warmup_proportion": 0.02,
+        "learning_rate": 1e-3,
+        "weight_decay": 0.1,
+        "num_workers": 4,
+        "async_worker": true,
+        "decay_rate": 0.90,
+        "decay_step": 150,
+        "one_cycle_steps": 125000
+    }
+}
