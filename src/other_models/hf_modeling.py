@@ -1,45 +1,52 @@
-# src/hf_modeling.py
 from transformers import AutoModel, AutoConfig
 import torch
 import torch.nn as nn
-from ..model_config import ModelConfig
 from src.modeling import *
-import inspect
+from operator import attrgetter
 
-class HFConfig(ModelConfig):
+class HFConfig:
     def __init__(self, hf_model_name_or_path, **kwargs):
-        signature = inspect.signature(super().__init__)
-        arg_names = [param.name for param in signature.parameters.values()]
-        config_kwargs = {}
-        for param, val in kwargs.items():
-            if param in arg_names:
-                config_kwargs[param] = val
-
-        super().__init__(**config_kwargs)
-        self.hf_config = AutoConfig.from_pretrained(hf_model_name_or_path)
+        self.hf_config = AutoConfig.from_pretrained(hf_model_name_or_path, **kwargs)
         for param, value in kwargs.items():
-            if param == "vocab_size_or_config_json_file" and "vocab_size" in self.hf_config:
-                setattr(self.hf_config, "vocab_size", value) 
-                continue
-            setattr(self.hf_config, param, value) 
+            setattr(self, param, value)
 
-class HFBaseModel(DANetPreTrainedModel):
+class HFPretrainedModel(nn.Module):
+    """ An abstract class to handle weights initialization and
+        a simple interface for dowloading and loading pretrained models.
+    """
+
+    def __init__(self):
+        super().__init__()
+
+    def init_weights(self, module):
+        """ Initialize the weights."""
+        std = self.config.initializer_range
+        if isinstance(module, nn.Embedding):
+            module.weight.data.normal_(mean=0, std=std)
+        elif isinstance(module, nn.Linear):
+            module.weight.data.uniform_(-std, std)
+            if module.bias is not None:
+                module.bias.data.zero_()
+
+class HFAdapter(nn.Module):
     """Core adapter that handles input/output conversion"""
     def __init__(self, config, args=None):
-        super().__init__(config)
-        self.hf_config = config.hf_config
-        self.model = AutoModel.from_config(self.hf_config)
+        super().__init__()
+        self.config = config
+        self.model = AutoModel.from_config(self.config.hf_config)
+        self.PATH_TO_LAYERS = "model.encoder.layer"
+        self.PATH_TO_EMBEDDINGS = "model.embeddings"
 
     def forward(self, input_ids, attention_mask=None, token_type_ids=None):
-        input_ids = input_ids[:, :self.hf_config.max_position_embeddings]
+        input_ids = input_ids[:, :self.config.max_position_embeddings]
         if token_type_ids is None:
             token_type_ids = torch.zeros_like(input_ids)
         else:
-            token_type_ids = token_type_ids[:, :self.hf_config.max_position_embeddings]
+            token_type_ids = token_type_ids[:, :self.config.max_position_embeddings]
         if attention_mask is None:
             attention_mask = torch.ones_like(input_ids)
         else:
-            attention_mask = attention_mask[:, :self.hf_config.max_position_embeddings]
+            attention_mask = attention_mask[:, :self.config.max_position_embeddings]
         outputs = self.model(
             input_ids,
             attention_mask=attention_mask,
@@ -54,17 +61,17 @@ class HFBaseModel(DANetPreTrainedModel):
         return sequence_output, pooled_output
 
 # Task-Specific Heads
-class HFForPreTraining(DANetForPreTraining):
+class HFForPreTraining(HFPretrainedModel):
     def __init__(self, config, args=None):
-        super().__init__(config, args)
-        self.path_to_bert = "bert.model"
-        self.bert = HFBaseModel(config)
+        super().__init__()
+        self.bert = HFAdapter(config)
         self.cls = BertPreTrainingHeads(
             config, 
-            self.bert.model.embeddings.word_embeddings.weight,
-            num_labels=config.hf_config.num_labels
+            attrgetter(self.bert.PATH_TO_EMBEDDINGS)(self.bert).word_embeddings.weight,
+            num_labels=config.num_labels
         )
         self.loss_fct = nn.CrossEntropyLoss(ignore_index=-1)
+        self.apply(self.init_weights)
 
     def forward(self, input_ids, attention_mask=None, token_type_ids=None,
                 masked_lm_labels=None, label=None, log=True):
@@ -91,7 +98,7 @@ class HFForPreTraining(DANetForPreTraining):
             prediction_scores.view(-1, self.config.vocab_size), target
         )
         next_sentence_loss = self.loss_fct(
-            seq_relationship_score.view(-1, self.config.hf_config.num_labels), label.view(-1)
+            seq_relationship_score.view(-1, self.config.num_labels), label.view(-1)
         )
         total_loss = masked_lm_loss + next_sentence_loss
         
@@ -100,13 +107,13 @@ class HFForPreTraining(DANetForPreTraining):
                     prediction_scores, seq_relationship_score)
         return total_loss
 
-class HFForSequenceClassification(BertForSequenceClassification):
+class HFForSequenceClassification(HFPretrainedModel):
     def __init__(self, config, args=None):
-        super().__init__(config, args)
-        self.path_to_bert = "bert.model"
-        self.bert = HFBaseModel(config)
+        super().__init__()
+        self.bert = HFAdapter(config)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
-        self.classifier = nn.Linear(config.hidden_size, config.hf_config.num_labels)
+        self.classifier = nn.Linear(config.hidden_size, config.num_labels)
+        self.apply(self.init_weights)
 
     def forward(self, input_ids, label=None, attention_mask=None, 
                 token_type_ids=None, checkpoint_activations=False):
@@ -118,19 +125,19 @@ class HFForSequenceClassification(BertForSequenceClassification):
 
         if label is not None:
             loss_fct = nn.CrossEntropyLoss()
-            loss = loss_fct(logits.view(-1, self.config.hf_config.num_labels), label.view(-1))
+            loss = loss_fct(logits.view(-1, self.config.num_labels), label.view(-1))
             if not self.training:
                 return loss, logits
             return loss
         return logits
 
-class HFForRegression(BertForRegression):
+class HFForRegression(HFPretrainedModel):
     def __init__(self, config, args=None):
-        super().__init__(config, args)
-        self.path_to_bert = "bert.model"
-        self.bert = HFBaseModel(config)
+        super().__init__()
+        self.bert = HFAdapter(config)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.regressor = nn.Linear(config.hidden_size, 1)
+        self.apply(self.init_weights)
 
     def forward(self, input_ids, label=None, attention_mask=None,
                 token_type_ids=None, checkpoint_activations=False):
@@ -148,15 +155,15 @@ class HFForRegression(BertForRegression):
             return loss
         return logits
 
-class HFForAANMatching(BertForAANMatching):
+class HFForAANMatching(HFPretrainedModel):
     def __init__(self, config, args=None):
         super().__init__(config, args)
-        self.path_to_bert = "bert.model"
-        self.bert = HFBaseModel(config)
+        self.bert = HFAdapter(config)
         self.dense = nn.Linear(config.hidden_size * 4, config.hidden_size)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.activation = nn.GELU(approximate='tanh')
-        self.classifier = nn.Linear(config.hidden_size, config.hf_config.num_labels)
+        self.classifier = nn.Linear(config.hidden_size, config.num_labels)
+        self.apply(self.init_weights)
 
     def forward(self, input_ids, input_ids2, attention_mask=None,
                 attention_mask2=None, label=None, token_type_ids=None,
@@ -175,7 +182,7 @@ class HFForAANMatching(BertForAANMatching):
 
         if label is not None:
             loss_fct = nn.CrossEntropyLoss()
-            loss = loss_fct(logits.view(-1, self.config.hf_config.num_labels), label.view(-1))
+            loss = loss_fct(logits.view(-1, self.config.num_labels), label.view(-1))
             if not self.training:
                 return loss, logits
             return loss

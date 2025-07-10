@@ -39,21 +39,10 @@ from torch.nn.parameter import Parameter
 
 from src.danet_layers import DANetLayerWithLocalAttention, DANetLayer, TransformerLayer
 
+from train_utils import get_num_params
+
 logger = logging.getLogger(__name__)
 
-def get_num_params(model, non_embedding=True):
-    """
-    Return the number of parameters in the model.
-    For non-embedding count (default), the position embeddings get subtracted.
-    The token embeddings would too, except due to the parameter sharing these
-    params are actually used as weights in the final layer, so we include them.
-    """
-    n_params = sum(p.numel() for p in model.parameters())
-    if non_embedding:
-        n_params -= model.embeddings.word_embeddings.weight.numel()
-        n_params -= model.embeddings.position_embeddings.weight.numel()
-        n_params -= model.embeddings.token_type_embeddings.weight.numel()
-    return n_params
 
 class RealNumberEmbedding(nn.Module):
     def __init__(self, config: ModelConfig):
@@ -447,6 +436,8 @@ class DANetModel(DANetPreTrainedModel):
 
     def __init__(self, config: ModelConfig, args=None):
         super(DANetModel, self).__init__(config)
+        self.PATH_TO_LAYERS = "encoder.layer"
+        self.PATH_TO_EMBEDDINGS = "embeddings"
         self.embeddings = DANetEmbeddings(config)
         #self.posit_embs = MultiplicativePositionalEmbedding(config)
         # set pad_token_id that is used for sparse attention padding
@@ -585,7 +576,6 @@ class DANetForPreTraining(DANetPreTrainedModel):
 
     def __init__(self, config: ModelConfig, args):
         super(DANetForPreTraining, self).__init__(config)
-        self.path_to_bert = "bert"
         self.bert = DANetModel(config, args)
         self.num_labels = args.num_labels if hasattr(args, "num_labels") else 2
         self.cls = BertPreTrainingHeads(
@@ -811,7 +801,6 @@ class BertForMaskedLM(DANetPreTrainedModel):
 
     def __init__(self, config):
         super(BertForMaskedLM, self).__init__(config)
-        self.path_to_bert = "bert"
         self.bert = DANetModel(config)
         self.cls = BertOnlyMLMHead(config,
                                    self.bert.embeddings.word_embeddings.weight)
@@ -886,7 +875,6 @@ class BertForNextSentencePrediction(DANetPreTrainedModel):
     def __init__(self, config):
         super(BertForNextSentencePrediction, self).__init__(config)
         self.bert = DANetModel(config)
-        self.path_to_bert = "bert"
         self.cls = BertOnlyNSPHead(config)
         self.apply(self.init_bert_weights)
 
@@ -961,7 +949,6 @@ class BertForSequenceClassification(DANetPreTrainedModel):
         super(BertForSequenceClassification, self).__init__(config)
         self.num_labels = args.num_labels if hasattr(args, "num_labels") else 2
         self.window_size = config.window_size
-        self.path_to_bert = "bert"
         self.bert = DANetModel(config, args)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.classifier = nn.Linear(config.hidden_size, self.num_labels,
@@ -1066,7 +1053,6 @@ class BertForRegression(DANetPreTrainedModel):
         super(BertForRegression, self).__init__(config)
         self.num_labels = args.num_labels if hasattr(args, "num_labels") else 2
         self.window_size = config.window_size
-        self.path_to_bert = "bert"
         self.bert = DANetModel(config, args)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.regressor = nn.Linear(config.hidden_size, 1,
@@ -1171,7 +1157,6 @@ class BertForAANMatching(DANetPreTrainedModel):
         super(BertForAANMatching, self).__init__(config)
         self.num_labels = args.num_labels if hasattr(args, "num_labels") else 2
         self.window_size = config.window_size
-        self.path_to_bert = "bert"
         self.bert = DANetModel(config, args)
         self.dense = nn.Linear(config.hidden_size * 4, config.hidden_size, bias=False)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
@@ -1284,7 +1269,6 @@ class BertForMultipleChoice(DANetPreTrainedModel):
     def __init__(self, config, num_choices):
         super(BertForMultipleChoice, self).__init__(config)
         self.num_choices = num_choices
-        self.path_to_bert = "bert"
         self.bert = DANetModel(config)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.classifier = nn.Linear(config.hidden_size, 1)
@@ -1364,7 +1348,6 @@ class BertForTokenClassification(DANetPreTrainedModel):
     def __init__(self, config, num_labels):
         super(BertForTokenClassification, self).__init__(config)
         self.num_labels = num_labels
-        self.path_to_bert = "bert"
         self.bert = DANetModel(config)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.classifier = nn.Linear(config.hidden_size, num_labels)
@@ -1449,7 +1432,6 @@ class BertForQuestionAnswering(DANetPreTrainedModel):
 
     def __init__(self, config):
         super(BertForQuestionAnswering, self).__init__(config)
-        self.path_to_bert = "bert"
         self.bert = DANetModel(config)
         # TODO check with Google if it's normal there is no dropout on the token classifier of SQuAD in the TF version
         # self.dropout = nn.Dropout(config.hidden_dropout_prob)

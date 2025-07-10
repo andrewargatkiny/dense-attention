@@ -17,13 +17,11 @@ from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm
 
 from src.model_config import ModelConfig
-from src.modeling import get_num_params
-from src.other_models.hf_modeling import HFConfig
 from utils.tasks import TaskRegistry
 from train_arguments import get_argument_parser
 from utils.logger import Logger
 from utils.optimization import warmup_exp_decay_exp, cosine_poly_warmup_decay
-from train_utils import is_time_to_exit, master_process, TensorBoardWriter, WandBWriter, manage_checkpoints
+from train_utils import is_time_to_exit, master_process, TensorBoardWriter, WandBWriter, manage_checkpoints, get_num_params
 
 from data.dataset_utils import ShardedDatasetWrapper, create_dataloader
 
@@ -315,7 +313,7 @@ def train(args,
 def update_weights_scalers(model, num_layers):
     """Update weights scalers of DenseAttention Model"""
     for i in range(num_layers):
-        ffn = attrgetter(model.path_to_bert)(model).encoder.layer[i].ffn
+        ffn = attrgetter(model.bert.PATH_TO_LAYERS)(model.bert)[i].ffn
         ffn.adjust_norm_ratios()
 
 
@@ -657,30 +655,30 @@ def prepare_optimizer_parameters(args, model):
         weight_decay = 0.01
 
 
-    groups = [{'params': list(attrgetter(model.path_to_bert)(model).embeddings.parameters()),
+    groups = [{'params': list(attrgetter(model.bert.PATH_TO_EMBEDDINGS)(model.bert).parameters()),
             'lr': 0.0,
             'weight_decay': weight_decay,
             'name': 'embeddings'}]
-    for i in range(len(attrgetter(model.path_to_bert)(model).encoder.layer)):
+    for i in range(len(attrgetter(model.bert.PATH_TO_LAYERS)(model.bert))):
         if args.dense_attention:
             # If some kind of layer norm in attention layer has learnable
             # params, they wouldn't be updated.
             groups.append({
-                'params': list(attrgetter(model.path_to_bert)(model).encoder.layer[i].attention.parameters()),
+                'params': list(attrgetter(model.bert.PATH_TO_LAYERS)(model.bert)[i].attention.parameters()),
                 'lr': 0.0,
                 'weight_decay': weight_decay,
                 'name': f'layer_{i}_attention'
             })
-            if hasattr(attrgetter(model.path_to_bert)(model).encoder.layer[i], 'ffn'):
+            if hasattr(attrgetter(model.bert.PATH_TO_LAYERS)(model.bert)[i], 'ffn'):
                 groups.append({
-                    'params': list(attrgetter(model.path_to_bert)(model).encoder.layer[i].ffn.parameters()),
+                    'params': list(attrgetter(model.bert.PATH_TO_LAYERS)(model.bert)[i].ffn.parameters()),
                     'lr': 0.0,
                     'weight_decay': weight_decay,
                     'name': f'layer_{i}_ffn'
                 })
         else:
             groups.append({
-                'params': list(attrgetter(model.path_to_bert)(model).encoder.layer[i].parameters()),
+                'params': list(attrgetter(model.bert.PATH_TO_LAYERS)(model.bert)[i].parameters()),
                 'lr': 0.0,
                 'weight_decay': weight_decay,
                 'name': f'layer_{i}_attention'
@@ -713,7 +711,7 @@ def prepare_model_optimizer(args):
     deepspeed.init_distributed(dist_backend=args.dict_backend)
     args.local_rank = int(os.environ['LOCAL_RANK'])
     model_class = args.task.model_type
-    config_class = HFConfig if 'hf_model_name_or_path' in args.config["model_config"] else ModelConfig
+    config_class = ModelConfig
     if hasattr(args.task, "config_type"):
         config_class = args.task.config_type
 
@@ -806,7 +804,7 @@ def run(args, model, optimizer, start_epoch):
     logger = args.logger
     task = args.task
     if args.materialize_ffn_weights:
-        for layer in attrgetter(model.path_to_bert)(model).encoder.layer:
+        for layer in attrgetter(model.bert.PATH_TO_LAYERS)(model.bert):
             layer.ffn.rescale_weights()
     # if args.use_nvidia_dataset:
     #     pretrain_dataset_provider = NvidiaBertDatasetProvider(args)

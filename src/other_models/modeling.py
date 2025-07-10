@@ -918,6 +918,8 @@ class BertModel(PreTrainedBertModel):
     """
     def __init__(self, config):
         super(BertModel, self).__init__(config)
+        self.PATH_TO_LAYERS = "encoder.layer"
+        self.PATH_TO_EMBEDDINGS = "embeddings"
         self.embeddings = BertEmbeddings(config)
         self.encoder = BertEncoder(config)
         self.pooler = BertPooler(config)

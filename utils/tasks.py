@@ -14,7 +14,7 @@ from data.dataset import (LRADataset, LRATextDataset,
 from data.dataset_lm import BertPretrainingDatasetFactory, GPTPretrainingDataset, \
     BertOnlyMLMDataset
 from train_utils import eval_classification_task, eval_mlm_classification_task, eval_glue_tasks, eval_regression_task
-
+from ..src.other_models.hf_modeling import HFConfig
 
 @dataclass
 class SequenceClassification:
@@ -195,30 +195,35 @@ class HFSequenceClassification:
     dataset_type = LRADataset
     model_type = HFForSequenceClassification
     eval_func = eval_classification_task
+    config_type = HFConfig
 
 @dataclass
 class HFTextClassification:
     dataset_type = LRATextDataset
     model_type = HFForSequenceClassification
     eval_func = eval_classification_task
+    config_type = HFConfig
 
 @dataclass
 class HFTextsMatching:
     dataset_type = AANDataset
     model_type = HFForAANMatching
     eval_func = eval_classification_task
+    config_type = HFConfig
 
 @dataclass
 class HFBertPretraining:
     dataset_type = BertPretrainingDatasetFactory
     model_type = HFForPreTraining
     eval_func = eval_mlm_classification_task
+    config_type = HFConfig
 
 @dataclass
 class HFGlueForRegression:
     dataset_type = GlueBertDataset
     model_type = HFForRegression
     eval_func = eval_regression_task
+    config_type = HFConfig
 
 @dataclass
 class HFGlueWithAccMetrics:
@@ -227,6 +232,7 @@ class HFGlueWithAccMetrics:
     dataset_type = GlueBertDataset
     model_type = HFForSequenceClassification
     eval_func = eval_classification_task
+    config_type = HFConfig
 
 @dataclass
 class HFGlueWithAllMetrics:
@@ -235,6 +241,7 @@ class HFGlueWithAllMetrics:
     dataset_type = GlueBertDataset
     model_type = HFForSequenceClassification
     eval_func = eval_glue_tasks
+    config_type = HFConfig
 
 @dataclass
 class HFSequenceClassificationMLM:
@@ -243,6 +250,7 @@ class HFSequenceClassificationMLM:
     dataset_type = DatasetForMLM
     model_type = HFForPreTraining
     eval_func = eval_mlm_classification_task
+    config_type = HFConfig
 
 @dataclass
 class HFTextClassificationMLM:
@@ -251,6 +259,7 @@ class HFTextClassificationMLM:
     dataset_type = TextDatasetForMLM
     model_type = HFForPreTraining
     eval_func = eval_mlm_classification_task
+    config_type = HFConfig
 
 @dataclass
 class HFAANTextClassificationMLM:
@@ -258,12 +267,14 @@ class HFAANTextClassificationMLM:
     dataset_type = AANDatasetForMLM
     model_type = HFForPreTraining
     eval_func = eval_mlm_classification_task
+    config_type = HFConfig
 
 @dataclass
 class HFBertMLM:
     dataset_type = BertOnlyMLMDataset
     model_type = HFForPreTraining
     eval_func = eval_mlm_classification_task
+    config_type = HFConfig
 
 class TaskRegistry:
     _registry: Dict[str, Type] = {}
