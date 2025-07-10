@@ -1,10 +1,10 @@
 {
     "name": "dense_attention_bert",
     "model_config": {
-        "vocab_size_or_config_json_file": 264,
-        "d_model": 128,
-        "d_state": 128,
-        "num_hidden_layers": 6,
+        "vocab_size_or_config_json_file": 30528,
+        "d_model": 512,
+        "d_state": 512,
+        "num_hidden_layers": 4,
         "channels": 1,
         "bidirectional": true,
         "activation": "gelu",
