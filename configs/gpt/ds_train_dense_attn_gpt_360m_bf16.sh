@@ -79,7 +79,6 @@ NCCL_TREE_THRESHOLD=0 deepspeed --master_port "$MASTER_PORT" ${base_dir}/deepspe
 --only_mlm_task \
 --use_torch_compile \
 --no_decay_embeddings \
---no_eval_val_data \
 --eval_test_data \
 --log_weight_norms \
 --log_diagnostic_freq 5 \
