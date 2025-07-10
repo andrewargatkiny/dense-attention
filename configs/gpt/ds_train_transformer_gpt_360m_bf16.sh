@@ -14,39 +14,52 @@ DS_CONFIG=${DS_CONFIG:-${base_dir}/configs/gpt/deepspeed_transformer_4k.json}
 MODEL_CONFIG=${MODEL_CONFIG:-"$CONFIG"}
 DATA_CONFIG=${DATA_CONFIG:-"$CONFIG"}
 TRAINING_CONFIG=${TRAINING_CONFIG:-"$CONFIG"}
+TASK_TYPE=${TASK_TYPE:-"transformer_gpt_pretraining"}
+TRACKING_SYSTEM=${TRACKING_SYSTEM:-clearml}
 
-# Default values
-: "${BASE_DATA_DIR:=${base_dir}/data}"
-CHECKPOINT_BASE_PATH=""
-CHECKPOINT_EPOCH_NAME=""
+JOB_NAME_SUFFIX=${JOB_NAME_SUFFIX-"_$(date +'%Y-%m-%d_%H-%M')"}
+OVERRIDE_ARGS=()
 
 # Check if we're resuming from a checkpoint
-if [ "$1" = "--resume" ]; then
-    if [ -n "$2" ]; then
-        LOAD_EPOCH=$2
-    else
-        echo "Epoch number for model checkpoint is not defined, exiting."
-        echo "Usage: ./your_train_script_name.sh [--resume EPOCH DIR_WITH_TRAIN_ARTIFACTS]"
-        exit 1
-    fi
+if [ "${1-}" = "--resume" ]; then
+  shift
+  # Handle EPOCH or the keyword 'last'
+  if echo "${1-}" | grep -qE '^[0-9]+$'; then
+    LOAD_EPOCH=$1; shift
+  elif [ "${1-}" = "last" ]; then
+    LOAD_EPOCH=""; shift
+  else
+    LOAD_EPOCH=""
+  fi
 
-    if [ -z "$3" ]; then
-        echo "Subdirectory with model weights is not defined, exiting."
-        echo "Usage: ./your_train_script_name.sh [--resume EPOCH DIR_WITH_TRAIN_ARTIFACTS]"
-        exit 1
-    else
-        SUBDIR=$3
-    fi
+  [ $# -ge 1 ] || {
+    echo "Usage: $0 --resume [EPOCH|last] JOB_NAME"
+    echo "   or: $0 --resume [EPOCH|last] JOB_NAME --override cf.key=value ds.key=value ..."
+    exit 1
+  }
+  SUBDIR=$1; shift
 
-    CHECKPOINT_BASE_PATH=${OUTPUT_DIR}/saved_models/${SUBDIR}
-    CHECKPOINT_EPOCH_NAME=$(basename ${CHECKPOINT_BASE_PATH}/epoch${LOAD_EPOCH}_*)
-    echo "checkpoint id: $CHECKPOINT_EPOCH_NAME"
-    DATESTAMP=$(date +'%Y-%m-%d_%H-%M')
-    JOB_NAME="${SUBDIR}_from_epoch_${LOAD_EPOCH}_${DATESTAMP}"
+  CHECKPOINT_BASE_PATH="${OUTPUT_DIR}/saved_models/${SUBDIR}"
+
+  if [ -z "$LOAD_EPOCH" ]; then # auto-detect newest
+    LATEST_TAG=$(ls "$CHECKPOINT_BASE_PATH" | grep '^epoch' | sort -V | tail -n1)
+    LOAD_EPOCH=$(printf '%s\n' "$LATEST_TAG" | sed -E 's/^epoch([0-9]+).*/\1/')
+    CHECKPOINT_EPOCH_NAME="$LATEST_TAG"
+  else
+    CHECKPOINT_EPOCH_NAME=$(basename "${CHECKPOINT_BASE_PATH}/epoch${LOAD_EPOCH}"_*)
+  fi
+
+  echo ">> Resuming from checkpoint: $CHECKPOINT_EPOCH_NAME"
+
+
+  JOB_NAME="${SUBDIR}_from_epoch_${LOAD_EPOCH}${JOB_NAME_SUFFIX}"
 else
-    # Set up for initial training
-    DATESTAMP=$(date +'%Y-%m-%d_%H-%M')
-    JOB_NAME=${BASE_JOB_NAME}_${DATESTAMP}
+  # Set up for initial training
+  JOB_NAME="${BASE_JOB_NAME}${JOB_NAME_SUFFIX}"
+fi
+
+if [ "${1-}" = "--override" ]; then
+  OVERRIDE_ARGS=( "${@:2}" )
 fi
 
 
@@ -58,7 +71,7 @@ NCCL_TREE_THRESHOLD=0 deepspeed --master_port "$MASTER_PORT" ${base_dir}/deepspe
 --data_config_file "$DATA_CONFIG" \
 --train_config_file "$TRAINING_CONFIG" \
 --output_dir $OUTPUT_DIR \
---task_type "transformer_gpt_pretraining" \
+--task_type "$TASK_TYPE" \
 --use_sharded_dataset \
 --deepspeed \
 --only_mlm_task \
@@ -78,4 +91,5 @@ NCCL_TREE_THRESHOLD=0 deepspeed --master_port "$MASTER_PORT" ${base_dir}/deepspe
 --load_training_checkpoint $CHECKPOINT_BASE_PATH \
 --load_checkpoint_id $CHECKPOINT_EPOCH_NAME \
 --project_name "gpt_pretraining" \
+--override ${OVERRIDE_ARGS[@]} \
 &> ${JOB_NAME}.log

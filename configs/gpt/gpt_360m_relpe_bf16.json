@@ -10,16 +10,16 @@
         "swiglu_ffn": true,
         "attention_complexity": "auto",
         "attention_probs_dropout_prob": 0,
-        "embedding_ln_type": "max_norm",
+        "embedding_ln_type": "standard_ln",
         "embedding_dropout": 0,
-        "max_position_embeddings": 2048,
+        "max_position_embeddings": 4096,
         "token_type_embeddings": false,
         "type_vocab_size": 2,
         "initializer_range": 0.02,
         "pos_emb_type": "relpe",
         "relpe_type": "rope",
         "relpe_scheme": "q,k",
-        "final_ln_type": "max_norm",
+        "final_ln_type": "standard_ln",
         "pooler_no_dense": false,
         "pooler_function": "first",
         "pooler_act": "tanh",
@@ -27,36 +27,69 @@
         "lm_head_act": "gelu",
         "lm_head_ln_type": "standard_ln",
         "causal": true,
-        "chunk_size": 2048,
+        "chunk_size": 256,
         "local_attention": true,
         "local_scheme": "sw_sw_g",
-        "window_size": 1024
+        "window_size": 32
 
     },
     "data": {
         "training": {
-            "input_files_path": "pile/pile_2048_hdf5"
+            "hf_sources": [
+                {
+                    "name": "HuggingFaceFW/fineweb-edu",
+                    "subset": "sample-100BT",
+                    "split": "train",
+                    "chunk_size": 600000
+                }
+            ],
+            "total_samples": 131072,
+            "max_seq_length": 4096,
+            "tokenizer_name": "huggyllama/llama-7b",
+            "pad_samples": false
         },
         "validation": {
-            "input_file": "pile/val.jsonl.hdf5",
-            "total_samples": 187104
+            "hf_sources": [
+                {
+                    "name": "EleutherAI/wikitext_document_level",
+                    "subset": "wikitext-2-raw-v1",
+                    "split": "test",
+                    "offset": 0,
+                    "chunk_size": 62
+                }
+            ],
+            "total_samples": 81,
+            "max_seq_length": 4096,
+            "tokenizer_name": "huggyllama/llama-7b",
+            "pad_samples": false
         },
         "test": {
-            "input_file": "pile/test.jsonl.hdf5",
-            "total_samples": 182208
+            "hf_sources": [
+                {
+                    "name": "HuggingFaceFW/fineweb-edu",
+                    "subset": null,
+                    "split": "train",
+                    "offset": 10000,
+                    "chunk_size": 75000
+                }
+            ],
+            "total_samples": 16384,
+            "max_seq_length": 4096,
+            "tokenizer_name": "huggyllama/llama-7b",
+            "pad_samples": false
         }
     },
     "training": {
-        "num_epochs": 5,
+        "num_epochs": 28,
         "lr_scheduler_params": {
             "warmup_ratio": 0.015,
-            "warmup_degree": 1,
-            "degree": 1,
-            "one_cycle_steps": 20480
+            "max_lr": 4e-4,
+            "min_lr": 0.00005,
+            "one_cycle_steps": 57344
         },
-        "lr_schedule": "cosine",
-        "lr_offset": 0.00008,
-        "learning_rate": 7.2e-4,
+        "lr_schedule": "true_cosine",
+        "lr_offset": 0,
+        "learning_rate": 4e-4,
         "weight_decay": 0.1,
         "num_workers": 4
     }
