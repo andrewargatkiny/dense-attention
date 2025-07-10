@@ -74,6 +74,13 @@ class S4Config(object):
                  measure = "legs",
                  mode = "nplr",
                  disc = None,
+                 pooler_act = "tanh",
+                lm_head_act="legacy_gelu",
+                lm_head_ln_type = "uncentered_ln",
+                pooler_ln_type = None,
+                hidden_dropout_prob = 0,
+                window_size = None,
+                local_attention = False,
                  **kwargs):
         """Constructs ModelConfig.
 
@@ -133,7 +140,14 @@ class S4Config(object):
             self.embedding_dropout = embedding_dropout
             self.measure = measure
             self.mode = mode
+            self.pooler_act = pooler_act
+            self.lm_head_act = lm_head_act
+            self.lm_head_ln_type = lm_head_ln_type
             self.disc = disc
+            self.pooler_ln_type =pooler_ln_type
+            self.hidden_dropout_prob = hidden_dropout_prob
+            self.window_size = window_size
+            self.local_attention = local_attention
         else:
             raise ValueError(
                 "First argument must be either a vocabulary size (int)"

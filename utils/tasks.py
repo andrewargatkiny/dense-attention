@@ -81,6 +81,13 @@ class BertPretraining:
     eval_func = eval_mlm_classification_task
 
 @dataclass
+class S4BertPretraining:
+    dataset_type = BertPretrainingDatasetFactory
+    model_type = S4ForPreTraining
+    eval_func = eval_mlm_classification_task
+    config_type = S4Config
+
+@dataclass
 class BertMLM:
     dataset_type = BertOnlyMLMDataset
     model_type = DANetForPreTraining
@@ -227,6 +234,7 @@ TaskRegistry.register_task("sequence_classification_mlm", SequenceClassification
 TaskRegistry.register_task("text_classification_mlm", TextClassificationMLM)
 TaskRegistry.register_task("aan_text_classification_mlm", AANTextClassificationMLM)
 TaskRegistry.register_task("bert_pretraining", BertPretraining)
+TaskRegistry.register_task("s4_pretraining", S4BertPretraining)
 TaskRegistry.register_task("bert_mlm", BertMLM)
 TaskRegistry.register_task("gpt_pretraining", GptPretraining)
 TaskRegistry.register_task("transformer_bert_pretraining", TransformerBertPretraining)
