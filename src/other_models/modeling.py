@@ -730,20 +730,6 @@ class PreTrainedBertModel(nn.Module):
         super(PreTrainedBertModel, self).__init__()
         self.config = config
 
-    def get_num_params(self, non_embedding=True):
-        """
-        Return the number of parameters in the model.
-        For non-embedding count (default), the position embeddings get subtracted.
-        The token embeddings would too, except due to the parameter sharing these
-        params are actually used as weights in the final layer, so we include them.
-        """
-        n_params = sum(p.numel() for p in self.parameters())
-        if non_embedding:
-            n_params -= self.embeddings.word_embeddings.weight.numel()
-            n_params -= self.embeddings.position_embeddings.weight.numel()
-            n_params -= self.embeddings.token_type_embeddings.weight.numel()
-        return n_params
-
     def init_bert_weights(self, module):
         """ Initialize the weights.
         """
@@ -932,6 +918,8 @@ class BertModel(PreTrainedBertModel):
     """
     def __init__(self, config):
         super(BertModel, self).__init__(config)
+        self.PATH_TO_LAYERS = "encoder.layer"
+        self.PATH_TO_EMBEDDINGS = "embeddings"
         self.embeddings = BertEmbeddings(config)
         self.encoder = BertEncoder(config)
         self.pooler = BertPooler(config)
@@ -1028,6 +1016,7 @@ class TransformerForPreTraining(PreTrainedBertModel):
     """
     def __init__(self, config: TransformerConfig, args):
         super(TransformerForPreTraining, self).__init__(config)
+        self.PATH_TO_BACKBONE = "bert"
         self.bert = BertModel(config)
         self.cls = BertPreTrainingHeads(
             config, self.bert.embeddings.word_embeddings.weight, num_labels=args.num_labels)
@@ -1172,6 +1161,7 @@ class BertForMaskedLM(PreTrainedBertModel):
     """
     def __init__(self, config):
         super(BertForMaskedLM, self).__init__(config)
+        self.PATH_TO_BACKBONE = "bert"
         self.bert = BertModel(config)
         self.cls = BertOnlyMLMHead(config,
                                    self.bert.embeddings.word_embeddings.weight)
@@ -1243,6 +1233,7 @@ class BertForNextSentencePrediction(PreTrainedBertModel):
     """
     def __init__(self, config):
         super(BertForNextSentencePrediction, self).__init__(config)
+        self.PATH_TO_BACKBONE = "bert"
         self.bert = BertModel(config)
         self.cls = BertOnlyNSPHead(config)
         self.apply(self.init_bert_weights)
@@ -1316,6 +1307,7 @@ class TransformerForSequenceClassification(PreTrainedBertModel):
         super(TransformerForSequenceClassification, self).__init__(config)
         self.num_labels = args.num_labels
         self.window_size = config.window_size
+        self.PATH_TO_BACKBONE = "bert"
         self.bert = BertModel(config)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.classifier = nn.Linear(config.hidden_size, self.num_labels)
@@ -1349,6 +1341,7 @@ class TransformerForRegression(PreTrainedBertModel):
         super(TransformerForRegression, self).__init__(config)
         self.num_labels = args.num_labels
         self.window_size = config.window_size
+        self.PATH_TO_BACKBONE = "bert"
         self.bert = BertModel(config)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.regressor = nn.Linear(config.hidden_size, 1)
@@ -1433,6 +1426,7 @@ class TransformerForAANMatching(PreTrainedBertModel):
         super(TransformerForAANMatching, self).__init__(config)
         self.num_labels = args.num_labels
         self.window_size = config.window_size
+        self.PATH_TO_BACKBONE = "bert"
         self.bert = BertModel(config)
         self.dense = nn.Linear(config.hidden_size * 4, config.hidden_size)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
@@ -1523,6 +1517,7 @@ class BertForMultipleChoice(PreTrainedBertModel):
     def __init__(self, config, num_choices=2):
         super(BertForMultipleChoice, self).__init__(config)
         self.num_choices = num_choices
+        self.PATH_TO_BACKBONE = "bert"
         self.bert = BertModel(config)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.classifier = nn.Linear(config.hidden_size, 1)
@@ -1600,6 +1595,7 @@ class BertForTokenClassification(PreTrainedBertModel):
     def __init__(self, config, num_labels=2):
         super(BertForTokenClassification, self).__init__(config)
         self.num_labels = num_labels
+        self.PATH_TO_BACKBONE = "bert"
         self.bert = BertModel(config)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.classifier = nn.Linear(config.hidden_size, num_labels)
@@ -1674,6 +1670,7 @@ class BertForQuestionAnswering(PreTrainedBertModel):
     """
     def __init__(self, config):
         super(BertForQuestionAnswering, self).__init__(config)
+        self.PATH_TO_BACKBONE = "bert"
         self.bert = BertModel(config)
         # TODO check with Google if it's normal there is no dropout on the token classifier of SQuAD in the TF version
         # self.dropout = nn.Dropout(config.hidden_dropout_prob)

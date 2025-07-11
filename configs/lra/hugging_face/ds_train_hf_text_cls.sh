@@ -2,20 +2,14 @@
 
 base_dir=`pwd`
 
-SEED=${SEED:-42}
+SEED=${SEED:-100}
 NODE=${NODE:-0}
 MASTER_PORT=${MASTER_PORT:-29500}
-CONFIG=${CONFIG:-${base_dir}/configs/glue/hf_sst2.json}
-DS_CONFIG=${DS_CONFIG:-${base_dir}/configs/glue/deepspeed_config_sst2.json}
-: "${BASE_OUT_DIR:=${base_dir}}"
+CONFIG=${CONFIG:-${base_dir}/configs/lra/hugging_face/hf_text_cls.json}
+DS_CONFIG=${DS_CONFIG:-${base_dir}/configs/lra/deepspeed_config_text_cls.json}
 
-MODEL_CONFIG=${MODEL_CONFIG:-"$CONFIG"}
-DATA_CONFIG=${DATA_CONFIG:-"$CONFIG"}
-TRAINING_CONFIG=${TRAINING_CONFIG:-"$CONFIG"}
-TASK_TYPE=${TASK_TYPE:-"hf_glue_with_acc_metrics"}
-
-OUTPUT_DIR=${BASE_OUT_DIR}/bert_model_dense_attn_adam_outputs
-BASE_JOB_NAME="glue_sst2"
+OUTPUT_DIR=${base_dir}/bert_model_dense_attn_adam_outputs
+BASE_JOB_NAME="lra_text_cls"
 
 # Default values
 : "${BASE_DATA_DIR:=${base_dir}/data}"
@@ -56,27 +50,23 @@ mkdir -p $OUTPUT_DIR
 
 DS_ACCELERATOR="cpu" deepspeed ${base_dir}/deepspeed_train.py \
 --cf "$CONFIG" \
---model_config_file "$MODEL_CONFIG" \
---data_config_file "$DATA_CONFIG" \
---train_config_file "$TRAINING_CONFIG" \
+--max_seq_length 24 \
 --output_dir $OUTPUT_DIR \
---task_type "$TASK_TYPE" \
+--task_type "hf_text_classification" \
 --deepspeed \
---use_torch_compile \
 --eval_train_data \
---zero_init_pooler \
---max_validation_samples 2000 \
---ckpt_to_save 0 \
+--eval_test_data \
+--max_validation_samples 25000 \
+--log_diagnostic_freq 10 \
+--log_activations \
 --seed "$SEED" \
+--num_labels 2 \
 --job_name $JOB_NAME \
 --deepspeed_config "$DS_CONFIG" \
---eval_bs_ratio 2 \
---inputs_logging_ratio 0.5 \
+--data_path_prefix "${BASE_DATA_DIR}/lra/text_classification/" \
+--eval_bs_ratio 4 \
+--inputs_logging_ratio 0.3 \
 --load_training_checkpoint $CHECKPOINT_BASE_PATH \
 --load_checkpoint_id $CHECKPOINT_EPOCH_NAME \
---load_only_weights \
---project_name "glue-sst2" \
+--project_name "lra-text-cls" \
 &> ${JOB_NAME}.log
-
-# train: 67349 rows
-# val 872 rows
