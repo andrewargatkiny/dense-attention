@@ -14,7 +14,7 @@ from data.dataset import (LRADataset, LRATextDataset,
 from data.dataset_lm import BertPretrainingDatasetFactory, GPTPretrainingDataset, \
     BertOnlyMLMDataset
 from train_utils import eval_classification_task, eval_mlm_classification_task, eval_glue_tasks, eval_regression_task
-from ..src.other_models.hf_modeling import HFConfig
+from src.other_models.hf_modeling import HFConfig
 
 @dataclass
 class SequenceClassification:

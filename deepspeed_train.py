@@ -312,8 +312,10 @@ def train(args,
 
 def update_weights_scalers(model, num_layers):
     """Update weights scalers of DenseAttention Model"""
+    backbone = attrgetter(model.PATH_TO_BACKBONE)(model)
+    layers = attrgetter(backbone.PATH_TO_LAYERS)(backbone)
     for i in range(num_layers):
-        ffn = attrgetter(model.bert.PATH_TO_LAYERS)(model.bert)[i].ffn
+        ffn = layers[i].ffn
         ffn.adjust_norm_ratios()
 
 
@@ -511,28 +513,31 @@ def report_model_weights(args, model, step, bins=20):
             raise ValueError(f"{args.logging_norm_type} is an invalid option \
                              for the args.logging_norm_type argument. \
                              Available options are: {', '.join(norm_types)}.")
-
-        def get_group(name):
-            """
-            Returns the group name under which the specified model parameter's vector norm 
-            should be logged and the layer's identifier in the group.
-            """
-
-            # "module.bert.encoder.layer.0.attention.queries" -> ".layer.0."
-            layer = re.search(r'\.layer\.\d+\.', name) 
-            if layer:
-                layer = layer.group(0)
-                group_name = name.replace(layer, '.', 1)
-                layer_number = re.search(r'\d+', layer).group(0)
-                return group_name, f"Layer {layer_number}"
-
-            return ("Embeddings parameters", name) if re.search(r'embed', name) else ("Other parameters", name)
+        backbone = attrgetter(model.PATH_TO_BACKBONE)(model)
+        layers = attrgetter(backbone.PATH_TO_LAYERS)(backbone)
+        embeddings = attrgetter(backbone.PATH_TO_EMBEDDINGS)(backbone)
+        full_path = lambda name, is_layer=True: \
+            '.'.join(["module",
+            model.PATH_TO_BACKBONE, 
+            (backbone.PATH_TO_LAYERS if is_layer else backbone.PATH_TO_EMBEDDINGS),
+            name])
+        embeddings_params = {
+            full_path(name, is_layer=False): ('Embedding parameters', name) 
+            for name, param in 
+            embeddings.named_parameters()
+        }
+        layers_params = {
+            full_path(name): ('.'.join(name.split(".")[1:]),
+                              f'Layer {name.split(".")[0]}')
+            for name, param in layers.named_parameters()
+        }
+        params = {**embeddings_params, **layers_params}
 
         for name, param in model.named_parameters():
             p = param.detach().cpu().float()
             if args.log_weight_norms: 
                 norm = torch.norm(p, p=norm_types[args.logging_norm_type]).item()
-                group_name, identifier = get_group(name)
+                group_name, identifier = params.get(name, ('Other parameters', name))
                 args.tracker_logger.report_scalar(
                     title=f':{args.logging_norm_type} Norm/ {group_name}',
                     series=identifier,
@@ -654,31 +659,33 @@ def prepare_optimizer_parameters(args, model):
     else:
         weight_decay = 0.01
 
-
-    groups = [{'params': list(attrgetter(model.bert.PATH_TO_EMBEDDINGS)(model.bert).parameters()),
+    backbone = attrgetter(model.PATH_TO_BACKBONE)(model)
+    layers = attrgetter(backbone.PATH_TO_LAYERS)(backbone)
+    embeddings = attrgetter(backbone.PATH_TO_EMBEDDINGS)(backbone)
+    groups = [{'params': list(embeddings.parameters()),
             'lr': 0.0,
             'weight_decay': weight_decay,
             'name': 'embeddings'}]
-    for i in range(len(attrgetter(model.bert.PATH_TO_LAYERS)(model.bert))):
+    for i in range(len(layers)):
         if args.dense_attention:
             # If some kind of layer norm in attention layer has learnable
             # params, they wouldn't be updated.
             groups.append({
-                'params': list(attrgetter(model.bert.PATH_TO_LAYERS)(model.bert)[i].attention.parameters()),
+                'params': list(layers[i].attention.parameters()),
                 'lr': 0.0,
                 'weight_decay': weight_decay,
                 'name': f'layer_{i}_attention'
             })
-            if hasattr(attrgetter(model.bert.PATH_TO_LAYERS)(model.bert)[i], 'ffn'):
+            if hasattr(layers, 'ffn'):
                 groups.append({
-                    'params': list(attrgetter(model.bert.PATH_TO_LAYERS)(model.bert)[i].ffn.parameters()),
+                    'params': list(layers.ffn.parameters()),
                     'lr': 0.0,
                     'weight_decay': weight_decay,
                     'name': f'layer_{i}_ffn'
                 })
         else:
             groups.append({
-                'params': list(attrgetter(model.bert.PATH_TO_LAYERS)(model.bert)[i].parameters()),
+                'params': list(layers[i].parameters()),
                 'lr': 0.0,
                 'weight_decay': weight_decay,
                 'name': f'layer_{i}_attention'
@@ -803,8 +810,10 @@ def run(args, model, optimizer, start_epoch):
     config = args.config
     logger = args.logger
     task = args.task
+    backbone = attrgetter(model.PATH_TO_BACKBONE)(model)
+    layers = attrgetter(backbone.PATH_TO_LAYERS)(backbone)
     if args.materialize_ffn_weights:
-        for layer in attrgetter(model.bert.PATH_TO_LAYERS)(model.bert):
+        for layer in layers:
             layer.ffn.rescale_weights()
     # if args.use_nvidia_dataset:
     #     pretrain_dataset_provider = NvidiaBertDatasetProvider(args)

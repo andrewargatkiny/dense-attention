@@ -4,7 +4,7 @@ base_dir=`pwd`
 SEED=${SEED:-100}
 NODE=${NODE:-0}
 MASTER_PORT=${MASTER_PORT:-29500}
-CONFIG=${CONFIG:-${base_dir}/configs/lra/hf_pathfinder32.json}
+CONFIG=${CONFIG:-${base_dir}/configs/lra/hugging_face/hf_pathfinder32.json}
 DS_CONFIG=${DS_CONFIG:-${base_dir}/configs/lra/deepspeed_config_pathfinder32.json}
 TRACKING_SYSTEM=${TRACKING_SYSTEM:-clearml}
 
@@ -52,7 +52,7 @@ fi
 
 mkdir -p $OUTPUT_DIR
 
-DS_ACCELERATOR="cpu" deepspeed ${base_dir}/deepspeed_train.py \
+NCCL_TREE_THRESHOLD=0 deepspeed --include localhost:"$NODE" --master_port "$MASTER_PORT" ${base_dir}/deepspeed_train.py \
 --cf "$CONFIG" \
 --max_seq_length 256 \
 --task_type "hf_sequence_classification" \
@@ -62,6 +62,7 @@ DS_ACCELERATOR="cpu" deepspeed ${base_dir}/deepspeed_train.py \
 --eval_test_data \
 --max_validation_samples 20000 \
 --log_diagnostic_freq 5 \
+--log_weight_norms \
 --log_activations \
 --tracking_system "$TRACKING_SYSTEM" \
 --seed "$SEED" \

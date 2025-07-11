@@ -5,7 +5,7 @@ base_dir=`pwd`
 SEED=${SEED:-100}
 NODE=${NODE:-0}
 MASTER_PORT=${MASTER_PORT:-29500}
-CONFIG=${CONFIG:-${base_dir}/configs/lra/hf_text_cls.json}
+CONFIG=${CONFIG:-${base_dir}/configs/lra/hugging_face/hf_text_cls.json}
 DS_CONFIG=${DS_CONFIG:-${base_dir}/configs/lra/deepspeed_config_text_cls.json}
 
 OUTPUT_DIR=${base_dir}/bert_model_dense_attn_adam_outputs

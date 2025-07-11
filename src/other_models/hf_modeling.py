@@ -6,17 +6,25 @@ from operator import attrgetter
 
 class HFConfig:
     def __init__(self, hf_model_name_or_path, **kwargs):
-        self.hf_config = AutoConfig.from_pretrained(hf_model_name_or_path, **kwargs)
-        for param, value in kwargs.items():
+        self.hf_config, unused_kwargs = AutoConfig.from_pretrained(hf_model_name_or_path, **kwargs, return_unused_kwargs=True)
+        for param, value in unused_kwargs.items():
             setattr(self, param, value)
+    def __getattribute__(self, name):
+        try:
+            return object.__getattribute__(self, name)
+        except AttributeError:
+            pass
+        return getattr(self.hf_config, name)
 
 class HFPretrainedModel(nn.Module):
-    """ An abstract class to handle weights initialization and
-        a simple interface for dowloading and loading pretrained models.
-    """
-
-    def __init__(self):
+    def __init__(self, config):
         super().__init__()
+        if not isinstance(config, HFConfig):
+            raise ValueError(
+                f"Parameter config in `{HFConfig}(config)` should \
+                    be an instance of class `HFConfig`."
+            )
+        self.config = config
 
     def init_weights(self, module):
         """ Initialize the weights."""
@@ -63,19 +71,20 @@ class HFAdapter(nn.Module):
 # Task-Specific Heads
 class HFForPreTraining(HFPretrainedModel):
     def __init__(self, config, args=None):
-        super().__init__()
-        self.bert = HFAdapter(config)
+        super().__init__(config)
+        self.PATH_TO_BACKBONE = "backbone"
+        self.backbone = HFAdapter(config)
         self.cls = BertPreTrainingHeads(
             config, 
-            attrgetter(self.bert.PATH_TO_EMBEDDINGS)(self.bert).word_embeddings.weight,
+            attrgetter(self.backbone.PATH_TO_EMBEDDINGS)(self.backbone).word_embeddings.weight,
             num_labels=config.num_labels
         )
         self.loss_fct = nn.CrossEntropyLoss(ignore_index=-1)
-        self.apply(self.init_weights)
+        self.cls.apply(self.init_weights)
 
     def forward(self, input_ids, attention_mask=None, token_type_ids=None,
                 masked_lm_labels=None, label=None, log=True):
-        sequence_output, pooled_output = self.bert(
+        sequence_output, pooled_output = self.backbone(
             input_ids, attention_mask, token_type_ids
         )
         
@@ -109,15 +118,16 @@ class HFForPreTraining(HFPretrainedModel):
 
 class HFForSequenceClassification(HFPretrainedModel):
     def __init__(self, config, args=None):
-        super().__init__()
-        self.bert = HFAdapter(config)
+        super().__init__(config)
+        self.PATH_TO_BACKBONE = "backbone"
+        self.backbone = HFAdapter(config)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.classifier = nn.Linear(config.hidden_size, config.num_labels)
-        self.apply(self.init_weights)
+        self.classifier.apply(self.init_weights)
 
     def forward(self, input_ids, label=None, attention_mask=None, 
                 token_type_ids=None, checkpoint_activations=False):
-        _, pooled_output = self.bert(
+        _, pooled_output = self.backbone(
             input_ids, attention_mask, token_type_ids
         )
         pooled_output = self.dropout(pooled_output)
@@ -133,15 +143,16 @@ class HFForSequenceClassification(HFPretrainedModel):
 
 class HFForRegression(HFPretrainedModel):
     def __init__(self, config, args=None):
-        super().__init__()
-        self.bert = HFAdapter(config)
+        super().__init__(config)
+        self.PATH_TO_BACKBONE = "backbone"
+        self.backbone = HFAdapter(config)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.regressor = nn.Linear(config.hidden_size, 1)
-        self.apply(self.init_weights)
+        self.regressor.apply(self.init_weights)
 
     def forward(self, input_ids, label=None, attention_mask=None,
                 token_type_ids=None, checkpoint_activations=False):
-        _, pooled_output = self.bert(
+        _, pooled_output = self.backbone(
             input_ids, attention_mask, token_type_ids
         )
         pooled_output = self.dropout(pooled_output)
@@ -157,19 +168,21 @@ class HFForRegression(HFPretrainedModel):
 
 class HFForAANMatching(HFPretrainedModel):
     def __init__(self, config, args=None):
-        super().__init__(config, args)
-        self.bert = HFAdapter(config)
+        super().__init__(config)
+        self.PATH_TO_BACKBONE = "backbone"
+        self.backbone = HFAdapter(config)
         self.dense = nn.Linear(config.hidden_size * 4, config.hidden_size)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.activation = nn.GELU(approximate='tanh')
         self.classifier = nn.Linear(config.hidden_size, config.num_labels)
-        self.apply(self.init_weights)
+        self.classifier.apply(self.init_weights)
+        self.dense.apply(self.init_weights)
 
     def forward(self, input_ids, input_ids2, attention_mask=None,
                 attention_mask2=None, label=None, token_type_ids=None,
                 checkpoint_activations=False):
-        _, pooled1 = self.bert(input_ids, attention_mask, token_type_ids)
-        _, pooled2 = self.bert(input_ids2, attention_mask2, token_type_ids)
+        _, pooled1 = self.backbone(input_ids, attention_mask, token_type_ids)
+        _, pooled2 = self.backbone(input_ids2, attention_mask2, token_type_ids)
         
         hidden_states = torch.cat(
             [pooled1, pooled2, pooled1 * pooled2, pooled1 - pooled2],
