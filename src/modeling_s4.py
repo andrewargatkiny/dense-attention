@@ -58,10 +58,15 @@ class S4Config(object):
                  bidirectional=True,
                  activation='gelu',
                  postact='glu',
+                 mult_act=None,
+                 final_act=None,
                  hyper_act=None,
                  dropout=0.0, tie_dropout=False,
                  bottleneck=None,
+                initializer=None,
+                weight_norm=False,
                  gate=None,
+                 gate_act ="id",
                  transposed=False,
                  verbose=False,
                  embedding_ln_type ="hardtanh",
@@ -71,9 +76,6 @@ class S4Config(object):
                  pooler_no_dense = True,
                  pooler_function = "first",
                  embedding_dropout = 0,
-                 measure = "legs",
-                 mode = "nplr",
-                 disc = None,
                  pooler_act = "tanh",
                 lm_head_act="legacy_gelu",
                 lm_head_ln_type = "uncentered_ln",
@@ -138,16 +140,14 @@ class S4Config(object):
             self.pooler_no_dense = pooler_no_dense
             self.pooler_function = pooler_function
             self.embedding_dropout = embedding_dropout
-            self.measure = measure
-            self.mode = mode
             self.pooler_act = pooler_act
             self.lm_head_act = lm_head_act
             self.lm_head_ln_type = lm_head_ln_type
-            self.disc = disc
             self.pooler_ln_type =pooler_ln_type
             self.hidden_dropout_prob = hidden_dropout_prob
             self.window_size = window_size
             self.local_attention = local_attention
+            self.kwargs = kwargs
         else:
             raise ValueError(
                 "First argument must be either a vocabulary size (int)"
@@ -240,7 +240,7 @@ class S4Embeddings(nn.Module):
         return embeddings
 
 class S4Encoder(nn.Module):
-    def __init__(self, config: ModelConfig, args):
+    def __init__(self, config, args):
         super(S4Encoder, self).__init__()
         # Added later to make it similar to GPT-2
         if config.final_ln_type is not None:
@@ -250,7 +250,7 @@ class S4Encoder(nn.Module):
             self.final_transform_fn = lambda x: x
 
         layer_class = S4
-        layers = [layer_class(config)
+        layers = [layer_class(config, **config.kwargs)
                   for n in range(config.num_hidden_layers)]
 
         self.layer = nn.ModuleList(layers)

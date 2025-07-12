@@ -14,7 +14,7 @@
         "transposed": false,
         "verbose": false,
         "measure":"diag-inv",
-        "mode": "diag"
+        "mode": "diag"  
     },
     "data": {
         "training": {

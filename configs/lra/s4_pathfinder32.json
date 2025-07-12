@@ -4,15 +4,30 @@
         "vocab_size_or_config_json_file": 264,
         "d_model": 256,
         "d_state": 64,
-        "num_hidden_layers": 4,
+        "gate_act": "id",
+        "num_hidden_layers": 6,
         "channels": 1,
         "bidirectional": false,
         "activation": "gelu",
-        "postact": "glu",
+        "final_act": "glu",
         "dropout": 0.0,
-        "tie_dropout": false,
+        "weight_norm": false,
+        "tie_dropout": true,
+        "mode": "nplr",
+        "measure": "legs",
+        "rank": 1,
+        "dt_min": 0.001,
+        "dt_max": 0.1,
+        "real_type": "softplus",
+        "lr": {
+          "dt": 0.001,
+          "A": 0.001,
+          "B": 0.001
+        },
+        "n_ssm": 1,
+        "deterministic": false,
         "transposed": false,
-        "verbose": false
+        "verbose": true
     },
     "data": {
         "training": {
