@@ -42,7 +42,7 @@ fi
 mkdir -p $OUTPUT_DIR
 
 DS_ACCELERATOR="cpu" deepspeed ${base_dir}/deepspeed_train.py \
---cf ${base_dir}/configs/lra_mlm/hf_listops.json \
+--cf ${base_dir}/configs/lra_mlm/hugging_face/hf_listops.json \
 --max_seq_length 2000 \
 --output_dir $OUTPUT_DIR \
 --task_type "hf_text_classification_mlm" \

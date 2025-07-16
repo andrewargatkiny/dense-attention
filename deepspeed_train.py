@@ -516,8 +516,13 @@ def report_model_weights(args, model, step, bins=20):
         backbone = attrgetter(model.PATH_TO_BACKBONE)(model)
         layers = attrgetter(backbone.PATH_TO_LAYERS)(backbone)
         embeddings = attrgetter(backbone.PATH_TO_EMBEDDINGS)(backbone)
-        full_path = lambda name, is_layer=True: \
-            '.'.join(["module",
+
+        """
+        Get the full attribute path (in terms of the `model` object) for a 
+        parameter that belongs to either the layers or embeddings group of 
+        parameters by adding the corresponding prefix.
+        """
+        full_path = lambda name, is_layer=True: '.'.join(["module",
             model.PATH_TO_BACKBONE, 
             (backbone.PATH_TO_LAYERS if is_layer else backbone.PATH_TO_EMBEDDINGS),
             name])
@@ -531,6 +536,13 @@ def report_model_weights(args, model, step, bins=20):
                               f'Layer {name.split(".")[0]}')
             for name, param in layers.named_parameters()
         }
+        """
+        {
+            'module.backbone.model.encoder.layer.4.intermediate.dense.weight': 
+                ('intermediate.dense.weight', 'Layer 4'), 
+            ...
+        }
+        """
         params = {**embeddings_params, **layers_params}
 
         for name, param in model.named_parameters():
@@ -676,9 +688,9 @@ def prepare_optimizer_parameters(args, model):
                 'weight_decay': weight_decay,
                 'name': f'layer_{i}_attention'
             })
-            if hasattr(layers, 'ffn'):
+            if hasattr(layers[i], 'ffn'):
                 groups.append({
-                    'params': list(layers.ffn.parameters()),
+                    'params': list(layers[i].ffn.parameters()),
                     'lr': 0.0,
                     'weight_decay': weight_decay,
                     'name': f'layer_{i}_ffn'
@@ -810,9 +822,9 @@ def run(args, model, optimizer, start_epoch):
     config = args.config
     logger = args.logger
     task = args.task
-    backbone = attrgetter(model.PATH_TO_BACKBONE)(model)
-    layers = attrgetter(backbone.PATH_TO_LAYERS)(backbone)
     if args.materialize_ffn_weights:
+        backbone = attrgetter(model.PATH_TO_BACKBONE)(model)
+        layers = attrgetter(backbone.PATH_TO_LAYERS)(backbone)
         for layer in layers:
             layer.ffn.rescale_weights()
     # if args.use_nvidia_dataset:

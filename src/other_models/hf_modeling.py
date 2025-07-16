@@ -42,8 +42,8 @@ class HFAdapter(nn.Module):
         super().__init__()
         self.config = config
         self.model = AutoModel.from_config(self.config.hf_config)
-        self.PATH_TO_LAYERS = "model.encoder.layer"
-        self.PATH_TO_EMBEDDINGS = "model.embeddings"
+        self.PATH_TO_LAYERS = getattr(self.config, "PATH_TO_LAYERS", "model.encoder.layer")
+        self.PATH_TO_EMBEDDINGS = getattr(self.config, "PATH_TO_EMBEDDINGS", "model.embeddings")
 
     def forward(self, input_ids, attention_mask=None, token_type_ids=None):
         input_ids = input_ids[:, :self.config.max_position_embeddings]

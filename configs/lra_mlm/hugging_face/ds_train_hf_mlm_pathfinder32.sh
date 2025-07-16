@@ -5,7 +5,7 @@ base_dir=`pwd`
 SEED=${SEED:-100}
 NODE=${NODE:-0}
 MASTER_PORT=${MASTER_PORT:-29500}
-CONFIG=${CONFIG:-${base_dir}/configs/lra_mlm/hf_pathfinder32.json}
+CONFIG=${CONFIG:-${base_dir}/configs/lra_mlm/hugging_face/hf_pathfinder32.json}
 DS_CONFIG=${DS_CONFIG:-${base_dir}/configs/lra_mlm/deepspeed_config_pathfinder32.json}
 
 OUTPUT_DIR=${base_dir}/bert_model_dense_attn_adam_outputs

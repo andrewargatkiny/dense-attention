@@ -1,6 +1,9 @@
 #!/bin/bash
 
 base_dir=`pwd`
+SEED=${SEED:-100}
+NODE=${NODE:-0}
+MASTER_PORT=${MASTER_PORT:-29500}
 OUTPUT_DIR=${base_dir}/bert_model_dense_attn_adam_outputs
 BASE_JOB_NAME="hf_bert_pretraining"
 CONFIG=${CONFIG:-${base_dir}/configs/bert/hf_bert_seq128.json}
@@ -42,7 +45,7 @@ fi
 
 mkdir -p $OUTPUT_DIR
 
-DS_ACCELERATOR="cpu" deepspeed ${base_dir}/deepspeed_train.py \
+NCCL_TREE_THRESHOLD=0 deepspeed --include localhost:"$NODE" --master_port "$MASTER_PORT" ${base_dir}/deepspeed_train.py \
 --cf $CONFIG \
 --output_dir $OUTPUT_DIR \
 --task_type "hf_bert_pretraining" \

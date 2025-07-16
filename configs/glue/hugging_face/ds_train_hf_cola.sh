@@ -6,16 +6,16 @@ base_dir=`pwd`
 SEED=${SEED:-42}
 NODE=${NODE:-0}
 MASTER_PORT=${MASTER_PORT:-29500}
-CONFIG=${CONFIG:-${base_dir}/configs/glue/hf_stsb.json}
-DS_CONFIG=${DS_CONFIG:-${base_dir}/configs/glue/deepspeed_config_stsb.json}
+CONFIG=${CONFIG:-${base_dir}/configs/glue/hugging_face/hf_cola.json}
+DS_CONFIG=${DS_CONFIG:-${base_dir}/configs/glue/deepspeed_config_cola.json}
 
 MODEL_CONFIG=${MODEL_CONFIG:-"$CONFIG"}
 DATA_CONFIG=${DATA_CONFIG:-"$CONFIG"}
 TRAINING_CONFIG=${TRAINING_CONFIG:-"$CONFIG"}
-TASK_TYPE=${TASK_TYPE:-"hf_glue_for_regression"}
+TASK_TYPE=${TASK_TYPE:-"hf_glue_with_all_metrics"}
 
 OUTPUT_DIR=${BASE_OUT_DIR}/bert_model_dense_attn_adam_outputs
-BASE_JOB_NAME="glue_stsb"
+BASE_JOB_NAME="glue_cola"
 
 # Default values
 : "${BASE_DATA_DIR:=${base_dir}/data}"
@@ -54,7 +54,7 @@ fi
 
 mkdir -p $OUTPUT_DIR
 
-DS_ACCELERATOR="cpu" deepspeed ${base_dir}/deepspeed_train.py \
+NCCL_TREE_THRESHOLD=0 deepspeed --include localhost:"$NODE" --master_port "$MASTER_PORT" ${base_dir}/deepspeed_train.py \
 --cf "$CONFIG" \
 --model_config_file "$MODEL_CONFIG" \
 --data_config_file "$DATA_CONFIG" \
@@ -62,9 +62,10 @@ DS_ACCELERATOR="cpu" deepspeed ${base_dir}/deepspeed_train.py \
 --output_dir $OUTPUT_DIR \
 --task_type "$TASK_TYPE" \
 --deepspeed \
+--use_torch_compile \
 --eval_train_data \
 --zero_init_pooler \
---max_validation_samples 1500 \
+--max_validation_samples 1100 \
 --ckpt_to_save 0 \
 --seed "$SEED" \
 --job_name $JOB_NAME \
@@ -74,8 +75,8 @@ DS_ACCELERATOR="cpu" deepspeed ${base_dir}/deepspeed_train.py \
 --load_training_checkpoint $CHECKPOINT_BASE_PATH \
 --load_checkpoint_id $CHECKPOINT_EPOCH_NAME \
 --load_only_weights \
---project_name "glue-stsb" \
+--project_name "glue-cola" \
 &> ${JOB_NAME}.log
 
-# train: 5749 rows
-# val 1500 rows
+# train: 8551 rows
+# val 1043 rows

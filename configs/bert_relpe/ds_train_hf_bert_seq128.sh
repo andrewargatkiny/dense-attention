@@ -3,7 +3,7 @@
 base_dir=`pwd`
 : "${BASE_OUT_DIR:=${base_dir}}"
 OUTPUT_DIR=${BASE_OUT_DIR}/bert_model_dense_attn_adam_outputs
-BASE_JOB_NAME="bert_pretraining"
+BASE_JOB_NAME="hf_bert_pretraining"
 
 # Default values
 : "${BASE_DATA_DIR:=${base_dir}/data}"
@@ -13,7 +13,7 @@ CHECKPOINT_EPOCH_NAME=""
 SEED=${SEED:-42}
 #NODE=${NODE:-0}
 MASTER_PORT=${MASTER_PORT:-29500}
-CONFIG=${CONFIG:-${base_dir}/configs/bert_relpe/bert_large_rope_seq128_bf16.json}
+CONFIG=${CONFIG:-${base_dir}/configs/bert_relpe/hf_bert_seq128.json}
 DS_CONFIG=${DS_CONFIG:-${base_dir}/configs/bert_relpe/deepspeed_config_seq128_bf16.json}
 
 MODEL_CONFIG=${MODEL_CONFIG:-"$CONFIG"}
