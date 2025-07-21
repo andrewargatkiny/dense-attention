@@ -537,6 +537,7 @@ def report_model_weights(args, model, step, bins=20):
             for name, param in layers.named_parameters()
         }
         """
+        Example dictionary entry:
         {
             'module.backbone.model.encoder.layer.4.intermediate.dense.weight': 
                 ('intermediate.dense.weight', 'Layer 4'), 

@@ -46,15 +46,10 @@ class HFAdapter(nn.Module):
         self.PATH_TO_EMBEDDINGS = getattr(self.config, "PATH_TO_EMBEDDINGS", "model.embeddings")
 
     def forward(self, input_ids, attention_mask=None, token_type_ids=None):
-        input_ids = input_ids[:, :self.config.max_position_embeddings]
         if token_type_ids is None:
             token_type_ids = torch.zeros_like(input_ids)
-        else:
-            token_type_ids = token_type_ids[:, :self.config.max_position_embeddings]
         if attention_mask is None:
             attention_mask = torch.ones_like(input_ids)
-        else:
-            attention_mask = attention_mask[:, :self.config.max_position_embeddings]
         outputs = self.model(
             input_ids,
             attention_mask=attention_mask,
