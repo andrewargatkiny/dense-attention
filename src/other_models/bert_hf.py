@@ -80,20 +80,6 @@ class BertHFForSequenceClassification(nn.Module):
             if module.bias is not None:
                 module.bias.data.zero_()
 
-    def get_num_params(self, non_embedding=True):
-        """
-        Return the number of parameters in the model.
-        For non-embedding count (default), the position embeddings get subtracted.
-        The token embeddings would too, except due to the parameter sharing these
-        params are actually used as weights in the final layer, so we include them.
-        """
-        n_params = sum(p.numel() for p in self.parameters())
-        if non_embedding:
-            n_params -= self.embeddings.word_embeddings.weight.numel()
-            n_params -= self.embeddings.position_embeddings.weight.numel()
-            n_params -= self.embeddings.token_type_embeddings.weight.numel()
-        return n_params
-
     def forward(self,
                 input_ids,
                 label=None,

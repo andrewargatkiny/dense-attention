@@ -68,6 +68,20 @@ def manage_checkpoints(path, args):
         except Exception as e:
             print(f"[ckpt-clean] could not delete {tag}: {e}")
 
+def get_num_params(model, non_embedding=True):
+    """
+    Return the number of parameters in the model.
+    For non-embedding count (default), the position embeddings get subtracted.
+    The token embeddings would too, except due to the parameter sharing these
+    params are actually used as weights in the final layer, so we include them.
+    """
+    n_params = sum(p.numel() for p in model.parameters())
+    if non_embedding:
+        n_params -= model.embeddings.word_embeddings.weight.numel()
+        n_params -= model.embeddings.position_embeddings.weight.numel()
+        n_params -= model.embeddings.token_type_embeddings.weight.numel()
+    return n_params
+
 class TensorBoardWriter:
     """Replacement class for the case when ClearML logging is disabled"""
     SUMMARY_WRITER_DIR_NAME = 'runs'

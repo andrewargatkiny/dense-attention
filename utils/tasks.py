@@ -6,6 +6,7 @@ from src.other_models import (TransformerForPreTraining,
                               TransformerForRegression, TransformerConfig)
 from src.modeling import DANetForPreTraining, BertForSequenceClassification, BertForAANMatching, \
     BertForRegression
+from src.other_models.hf_modeling import HFForAANMatching, HFForPreTraining, HFForRegression, HFForSequenceClassification
 from src.other_models.bert_hf import BertHFForSequenceClassification
 from data.dataset import (LRADataset, LRATextDataset,
                           DatasetForMLM, TextDatasetForMLM, AANDataset,
@@ -13,7 +14,7 @@ from data.dataset import (LRADataset, LRATextDataset,
 from data.dataset_lm import BertPretrainingDatasetFactory, GPTPretrainingDataset, \
     BertOnlyMLMDataset
 from train_utils import eval_classification_task, eval_mlm_classification_task, eval_glue_tasks, eval_regression_task
-
+from src.other_models.hf_modeling import HFConfig
 
 @dataclass
 class SequenceClassification:
@@ -191,7 +192,93 @@ class GluePretrainingMLM:
     dataset_type = GlueDatasetForMLM
     model_type = DANetForPreTraining
     eval_func = eval_mlm_classification_task
+#__________________________________________________
 
+@dataclass
+class HFSequenceClassification:
+    dataset_type = LRADataset
+    model_type = HFForSequenceClassification
+    eval_func = eval_classification_task
+    config_type = HFConfig
+
+@dataclass
+class HFTextClassification:
+    dataset_type = LRATextDataset
+    model_type = HFForSequenceClassification
+    eval_func = eval_classification_task
+    config_type = HFConfig
+
+@dataclass
+class HFTextsMatching:
+    dataset_type = AANDataset
+    model_type = HFForAANMatching
+    eval_func = eval_classification_task
+    config_type = HFConfig
+
+@dataclass
+class HFBertPretraining:
+    dataset_type = BertPretrainingDatasetFactory
+    model_type = HFForPreTraining
+    eval_func = eval_mlm_classification_task
+    config_type = HFConfig
+
+@dataclass
+class HFGlueForRegression:
+    dataset_type = GlueBertDataset
+    model_type = HFForRegression
+    eval_func = eval_regression_task
+    config_type = HFConfig
+
+@dataclass
+class HFGlueWithAccMetrics:
+    """Task for fine-tuning on some of the GLUE benchmark with accuracy as
+    the evaluation metric"""
+    dataset_type = GlueBertDataset
+    model_type = HFForSequenceClassification
+    eval_func = eval_classification_task
+    config_type = HFConfig
+
+@dataclass
+class HFGlueWithAllMetrics:
+    """Task for fine-tuning on some of the GLUE benchmark with accuracy, F1
+    and Matthews correlation as the evaluation metric"""
+    dataset_type = GlueBertDataset
+    model_type = HFForSequenceClassification
+    eval_func = eval_glue_tasks
+    config_type = HFConfig
+
+@dataclass
+class HFSequenceClassificationMLM:
+    """Task for basic sequence classification which treats all sequences as
+    having same length with MLM and classification objectives."""
+    dataset_type = DatasetForMLM
+    model_type = HFForPreTraining
+    eval_func = eval_mlm_classification_task
+    config_type = HFConfig
+
+@dataclass
+class HFTextClassificationMLM:
+    """Task with generic text-like sequences of possibly different lengths
+    with MLM and classification objectives."""
+    dataset_type = TextDatasetForMLM
+    model_type = HFForPreTraining
+    eval_func = eval_mlm_classification_task
+    config_type = HFConfig
+
+@dataclass
+class HFAANTextClassificationMLM:
+    """Like `TextClassificationMLM` but uses `AANDatasetForMLM`."""
+    dataset_type = AANDatasetForMLM
+    model_type = HFForPreTraining
+    eval_func = eval_mlm_classification_task
+    config_type = HFConfig
+
+@dataclass
+class HFBertMLM:
+    dataset_type = BertOnlyMLMDataset
+    model_type = HFForPreTraining
+    eval_func = eval_mlm_classification_task
+    config_type = HFConfig
 
 class TaskRegistry:
     _registry: Dict[str, Type] = {}
@@ -233,3 +320,15 @@ TaskRegistry.register_task("glue_transformer_with_acc_metrics", GlueTransformerW
 TaskRegistry.register_task("glue_hf_with_acc_metrics", GlueHFWithAccMetrics)
 TaskRegistry.register_task("glue_transformer_with_all_metrics", GlueTransformerWithAllMetrics)
 TaskRegistry.register_task("glue_transformer_for_regression", GlueTransformerForRegression)
+
+TaskRegistry.register_task("hf_sequence_classification", HFSequenceClassification)
+TaskRegistry.register_task("hf_text_classification", HFTextClassification)
+TaskRegistry.register_task("hf_texts_matching", HFTextsMatching)
+TaskRegistry.register_task("hf_bert_pretraining", HFBertPretraining)
+TaskRegistry.register_task("hf_glue_for_regression", HFGlueForRegression)
+TaskRegistry.register_task("hf_glue_with_acc_metrics", HFGlueWithAccMetrics)
+TaskRegistry.register_task("hf_glue_with_all_metrics", HFGlueWithAllMetrics)
+TaskRegistry.register_task("hf_sequence_classification_mlm", HFSequenceClassificationMLM)
+TaskRegistry.register_task("hf_text_classification_mlm", HFTextClassificationMLM)
+TaskRegistry.register_task("hf_aan_text_classification_mlm", HFAANTextClassificationMLM)
+TaskRegistry.register_task("hf_bert_mlm", HFBertMLM)
