@@ -484,8 +484,10 @@ class S4Model(S4PreTrainedModel):
         #attention_mask = self.posit_embs(attention_mask)
         encoded_layers = self.encoder(
             embedding_output)
-        encoded_layers = self.pooler(encoded_layers[-1])
-        return encoded_layers
+        encoded_layers = encoded_layers[-1]
+    
+        pooled_output = self.pooler(encoded_layers)
+        return encoded_layers, pooled_output
 
     def forward_unpadded(self, input_ids, token_type_ids,
                        scalers, lengths,
@@ -508,8 +510,9 @@ class S4Model(S4PreTrainedModel):
             checkpoint_activations=checkpoint_activations)
         encoded_layers = [embedding_output] + encoded_layers
         sequence_output = encoded_layers[-1]
+        pooled_output = self.pooler(sequence_output, cs_lengths)
         encoded_layers = encoded_layers[-1]
-        return encoded_layers
+        return encoded_layers, pooled_output
 
 
 class S4ForPreTraining(S4PreTrainedModel):
@@ -729,7 +732,7 @@ class S4ForSequenceClassification(S4PreTrainedModel):
             attention_mask.sum(axis=-1, keepdim=True).pow(1. / 3)
         ).to(dtype).unsqueeze(-1)
 
-        pooled_output = self.bert(input_ids,
+        _, pooled_output = self.bert(input_ids,
                                      output_all_encoded_layers=False)
         logits = self.classifier(pooled_output)
         if label is not None:

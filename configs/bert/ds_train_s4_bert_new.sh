@@ -77,7 +77,7 @@ NCCL_TREE_THRESHOLD=0 deepspeed --include localhost:"$NODE" --master_port "$MAST
 --seed "$SEED" \
 --job_name $JOB_NAME \
 --deepspeed_config "$DS_CONFIG" \
---data_path_prefix "${BASE_DATA_DIR}/bert_mlm/" \
+--data_path_prefix "${BASE_DATA_DIR}/bert_mlm_small_c4/" \
 --eval_bs_ratio 2 \
 --inputs_logging_ratio 0.1 \
 --load_training_checkpoint $CHECKPOINT_BASE_PATH \

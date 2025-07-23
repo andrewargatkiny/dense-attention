@@ -30,7 +30,7 @@
         "training": {
             "input_files_path": "sentence_512/c4_en",
             "max_seq_length": 128,
-            "total_samples": 1048576
+            "total_samples": 128
         },
         "validation": {
             "input_file": "sentence_512/validation_data/part_000.txt",
