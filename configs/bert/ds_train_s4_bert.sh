@@ -1,16 +1,23 @@
 #!/bin/bash
 
 base_dir=`pwd`
+SEED=${SEED:-100}
+NODE=${NODE:-0}
+MASTER_PORT=${MASTER_PORT:-29500}
+CONFIG=${CONFIG:-${base_dir}/configs/bert/s4_bert_seq128.json}
+DS_CONFIG=${DS_CONFIG:-${base_dir}/configs/bert/deepspeed_config_seq128.json}
+TRACKING_SYSTEM=${TRACKING_SYSTEM:-clearml}
+
 OUTPUT_DIR=${base_dir}/bert_model_dense_attn_adam_outputs
 BASE_JOB_NAME="bert_pretraining"
-DS_CONFIG=${DS_CONFIG:-${base_dir}/configs/bert/deepspeed_config_seq128.json}
-
-TRACKING_SYSTEM=${TRACKING_SYSTEM:-clearml}
 
 # Default values
 : "${BASE_DATA_DIR:=${base_dir}/data}"
 CHECKPOINT_BASE_PATH=""
 CHECKPOINT_EPOCH_NAME=""
+
+JOB_NAME_SUFFIX=${JOB_NAME_SUFFIX-"_$(date +'%Y-%m-%d_%H-%M')"}
+OVERRIDE_ARGS=()
 
 # Check if we're resuming from a checkpoint
 if [ "${1-}" = "--resume" ]; then
@@ -56,18 +63,18 @@ fi
 
 mkdir -p $OUTPUT_DIR
 
-NCCL_TREE_THRESHOLD=0 deepspeed ${base_dir}/deepspeed_train.py \
---cf ${base_dir}/configs/bert/s4_bert_seq128.json \
---output_dir $OUTPUT_DIR \
+NCCL_TREE_THRESHOLD=0 deepspeed --include localhost:"$NODE" --master_port "$MASTER_PORT" ${base_dir}/deepspeed_train.py \
+--cf "$CONFIG" \
 --task_type "s4_pretraining" \
+--output_dir $OUTPUT_DIR \
 --use_sharded_dataset \
 --deepspeed \
 --eval_train_data \
 --log_diagnostic_freq 5 \
---tracking_system "$TRACKING_SYSTEM" \
---scale_ffn_weights \
 --log_activations \
---seed 42 \
+--scale_ffn_weights \
+--tracking_system "$TRACKING_SYSTEM" \
+--seed "$SEED" \
 --job_name $JOB_NAME \
 --deepspeed_config "$DS_CONFIG" \
 --data_path_prefix "${BASE_DATA_DIR}/bert_mlm/" \
@@ -76,5 +83,8 @@ NCCL_TREE_THRESHOLD=0 deepspeed ${base_dir}/deepspeed_train.py \
 --load_training_checkpoint $CHECKPOINT_BASE_PATH \
 --load_checkpoint_id $CHECKPOINT_EPOCH_NAME \
 --load_only_weights \
+--keep_last_ckpts 3 \
+--ckpt_to_save 1 \
 --project_name "bert_pretraining" \
+--override ${OVERRIDE_ARGS[@]} \
 &> ${JOB_NAME}.log

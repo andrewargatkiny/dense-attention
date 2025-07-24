@@ -2,8 +2,8 @@
     "name": "lra-experiment",
     "model_config": {
         "vocab_size_or_config_json_file": 264,
-        "d_model": 128,
-        "d_state": 128,
+        "d_model": 256,
+        "d_state": 64,
         "num_hidden_layers": 6,
         "channels": 1,
         "bidirectional": true,
