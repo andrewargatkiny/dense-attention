@@ -129,6 +129,8 @@ class TransformerConfig(object):
                 `BertModel`.
             initializer_range: The sttdev of the truncated_normal_initializer for
                 initializing all weight matrices.
+            apply_relpe_after: Whether Relative Positional Encoding (RELPE) is applied after the feature map (if true)
+             or before the linear attention kernel (if false).
         """
         if isinstance(vocab_size_or_config_json_file, str):
             with open(vocab_size_or_config_json_file, "r",
