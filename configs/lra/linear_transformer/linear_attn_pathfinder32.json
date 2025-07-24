@@ -17,7 +17,8 @@
         "feature_map": "1_plus_elu",
         "type_vocab_size": 2,
         "initializer_range": 0.2,
-        "window_size": 256
+        "window_size": 256,
+        "apply_relpe_after": true
     },
     "data": {
         "training": {
