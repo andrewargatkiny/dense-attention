@@ -12,13 +12,16 @@ OUTPUT_DIR=${base_dir}/bert_model_dense_attn_adam_outputs
 BASE_JOB_NAME="lra_pathfinder_32"
 
 REUSE_JOB_NAME=false
+new_args=()
 for arg in "$@"; do
-  if [ "$arg" = "--reuse_job_name" ]; then
+  if [ "$arg" != "--reuse_job_name" ]; then
+    new_args+=("$arg")
+  else
     REUSE_JOB_NAME=true
-    set -- "${@/--reuse_job_name/}"
-    break
   fi
 done
+set -- "${new_args[@]}"
+
 
 # Default values
 : "${BASE_DATA_DIR:=${base_dir}/data}"
@@ -43,6 +46,14 @@ if [ "${1-}" = "--resume" ]; then
   [ $# -ge 1 ] || {
     echo "Usage: $0 --resume [EPOCH|last] JOB_NAME"
     echo "   or: $0 --resume [EPOCH|last] JOB_NAME --override cf.key=value ds.key=value ..."
+    echo "Options:"
+    echo "  --reuse_job_name    Reuse the original job name instead of adding timestamp suffix"
+    echo "                      (can appear in any position among the arguments)"
+    echo ""
+    echo "Examples:"
+    echo "  $0 --resume last my_job_name"
+    echo "  $0 --reuse_job_name --resume last my_job_name" 
+    echo "  $0 --resume 10 my_job --reuse_job_name --override cf.key=value"
     exit 1
   }
   SUBDIR=$1; shift
@@ -67,6 +78,9 @@ if [ "${1-}" = "--resume" ]; then
 else
   # Set up for initial training
   JOB_NAME="${BASE_JOB_NAME}${JOB_NAME_SUFFIX}"
+  if $REUSE_JOB_NAME; then
+    JOB_NAME="$BASE_JOB_NAME"
+  fi
 fi
 
 if [ "${1-}" = "--override" ]; then
