@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 from torch.nn.attention.flex_attention import create_block_mask, flex_attention
+from src.positional_embeddings import PositionalEmbeddingsTypes, SinusoidalPositionalEncoding, RelPETypeToClass, \
+    RelPEType
 
 Transform2Func = {
     None: lambda x: x,
@@ -93,6 +95,17 @@ class LinearAttention(nn.Module):
         if self.no_reweight:
             self.forward_linear = self._forward_linear_no_norm
             self.forward_quadratic = self._forward_quadratic_no_norm
+        if (config.pos_emb_type == PositionalEmbeddingsTypes.RELPE and
+                config.relpe_type is not None):
+            self.relpe_type = RelPEType[config.relpe_type.upper()]
+        else:
+            self. relpe_type = RelPEType.DUMMY
+        self.rope_cache = RelPETypeToClass[self.relpe_type](
+            config.max_position_embeddings, #args.max_seq_length
+            config.hidden_size // config.num_attention_heads,
+            #num_heads=config.num_attention_heads
+        )
+        self.apply_relpe_after = config.apply_relpe_after
 
     def forward(self, queries: torch.Tensor,
                 keys: torch.Tensor, values: torch.Tensor,
@@ -104,6 +117,9 @@ class LinearAttention(nn.Module):
         keys = nn.functional.dropout(keys,p=dropout_p)
         shape = queries.shape
         n, d = shape[-2], shape[-1]
+        if self.apply_relpe_after:
+          queries = self.rope_cache.apply_relpe(queries)
+          keys = self.rope_cache.apply_relpe(keys)
         if n < d:
             return self.forward_quadratic(queries, keys, values, attn_mask, dropout_p)
         else:

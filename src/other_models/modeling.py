@@ -103,6 +103,7 @@ class TransformerConfig(object):
                  causal=False,
                  local_attention=False,
                  window_size=1024,
+                 apply_relpe_after=False,
                  **kwargs):
         """Constructs ModelConfig.
 
@@ -157,6 +158,7 @@ class TransformerConfig(object):
             self.causal = causal
             self.local_attention = local_attention
             self.window_size = window_size
+            self.apply_relpe_after = apply_relpe_after
         else:
             raise ValueError(
                 "First argument must be either a vocabulary size (int)"
@@ -305,7 +307,7 @@ class BertSelfAttention(nn.Module):
 
         self.dropout = nn.Dropout(config.attention_probs_dropout_prob)
         self.dropout_prob = config.attention_probs_dropout_prob
-
+        self.apply_relpe_after = config.apply_relpe_after
     def transpose_for_scores(self, x):
         new_x_shape = x.size()[:-1] + (self.num_attention_heads,
                                        self.attention_head_size)
@@ -319,9 +321,10 @@ class BertSelfAttention(nn.Module):
         mixed_value_layer = self.value(hidden_states)
 
         query_layer = self.transpose_for_scores(mixed_query_layer)
-        query_layer = rope_cache.apply_relpe(query_layer)
         key_layer = self.transpose_for_scores(mixed_key_layer)
-        key_layer = rope_cache.apply_relpe(key_layer)
+        if not self.apply_relpe_after:
+          query_layer = rope_cache.apply_relpe(query_layer)
+          key_layer = rope_cache.apply_relpe(key_layer)
         value_layer = self.transpose_for_scores(mixed_value_layer)
         #if torch.all(attention_mask == 0):
         attention_mask = None
