@@ -19,7 +19,7 @@ from collections import deque, namedtuple
 from tqdm import tqdm
 from transformers import BertTokenizerFast, AutoTokenizer
 
-from data.dataset_utils import load_hf_datasets
+from data.dataset_utils import load_hf_datasets, materialize_data
 
 
 def BertPretrainingDatasetFactory(base_dir, dataset_config, args=None):
@@ -484,7 +484,7 @@ class BertOnlyMLMDataset(Dataset):
                 example["text"] = example["text"] + sep_token
                 return example
             ds = ds.map(add_sep_tok)
-            all_sentences = [example["text"] for example in ds]
+            all_sentences = materialize_data(ds)
             del ds
         else:
             file_path = os.path.join(base_dir, dataset_config["input_file"])
@@ -616,9 +616,9 @@ class GPTPretrainingDataset(Dataset):
                 example["text"] = example["text"].strip() + eos_token
                 return example
             ds = ds.map(strip_add_eos_tok)
-            all_sentences = [example["text"] for example in ds]
+            all_sentences = materialize_data(ds)
             del ds
-            base_name = f"offset_{dataset_config['offset']:012}"
+            base_name = f"offset_{dataset_config['hf_sources'][0].get('offset', 0):012}"
         else:
             file_path = os.path.join(base_dir, dataset_config["input_file"])
             base_name, ext = os.path.splitext(file_path)

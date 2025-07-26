@@ -1,11 +1,13 @@
 import copy
 import os
 import random
+import time
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 from typing import List, Optional
 
 import datasets
+import huggingface_hub
 import numpy as np
 from torch import distributed as dist
 from torch.utils.data import DataLoader, RandomSampler
@@ -160,6 +162,24 @@ def load_hf_dataset(dataset_config: HFDatasetParams) -> datasets.IterableDataset
         ds = ds.filter(f)
     ds = ds.select_columns(TEXT_COLUMN)
     return ds
+
+def materialize_data(ds: datasets.IterableDataset) -> List[str]:
+    """Materialize iterable dataset into an actual texts, handling possible
+    download errors."""
+    success_download = False
+    seconds_to_sleep = 60
+    while not success_download:
+        try:
+            all_sentences = [example["text"] for example in ds]
+            success_download = True
+            return all_sentences
+        except huggingface_hub.errors.HfHubHTTPError as ex:
+            print(ex)
+            print(f"Trying again to load the data "
+                  f"in {seconds_to_sleep} seconds.")
+            time.sleep(seconds_to_sleep)
+            seconds_to_sleep = max(300, seconds_to_sleep + 60)
+
 
 class ShardedDatasetWrapper:
     """For multi-file datasets and distributed training. Each data file should
