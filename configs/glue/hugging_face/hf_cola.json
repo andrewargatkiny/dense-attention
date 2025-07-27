@@ -1,0 +1,44 @@
+{
+    "name": "hf_bert",
+    "model_config": {
+        "hf_model_name_or_path": "bert-base-uncased",
+        "vocab_size_or_config_json_file": 30528,
+        "hidden_size": 12,
+        "num_hidden_layers": 2,
+        "num_attention_heads": 1,
+        "intermediate_size": 4,
+        "hidden_dropout_prob": 0.0,
+        "max_position_embeddings": 512
+    },
+    "data": {
+        "training": {
+            "task_name": "cola",
+            "split": "train",
+            "max_seq_length": 128
+        },
+        "validation": {
+            "task_name": "cola",
+            "split": "validation",
+            "max_seq_length": 128
+        },
+        "test": {
+            "task_name": "cola",
+            "split": "validation",
+            "max_seq_length": 128
+        }
+    },
+    "training": {
+        "num_epochs": 20,
+        "lr_scheduler_params": {
+            "warmup_ratio": 0.1,
+            "warmup_degree": 1,
+            "degree": 0,
+            "one_cycle_steps": 125000
+        },
+        "lr_schedule": "constant",
+        "lr_offset": 0.0,
+        "learning_rate": 4e-5,
+        "weight_decay": 0.0,
+        "num_workers": 4
+    }
+}
