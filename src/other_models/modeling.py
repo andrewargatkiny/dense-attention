@@ -335,7 +335,7 @@ class BertSelfAttention(nn.Module):
         #attention_mask = None
         context_layer = self.attention_kernel(
             query_layer, key_layer, value_layer, attn_mask=attention_mask,
-            dropout_p=self.dropout_prob, causal=self.causal
+            dropout_p=self.dropout_prob, causal=self.causal, rope_cache=rope_cache
         )
         """
         context_layer = nn.functional.scaled_dot_product_attention(
