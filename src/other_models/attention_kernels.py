@@ -1,8 +1,6 @@
 import torch
 import torch.nn as nn
 from torch.nn.attention.flex_attention import create_block_mask, flex_attention
-from src.positional_embeddings import PositionalEmbeddingsTypes, SinusoidalPositionalEncoding, RelPETypeToClass, \
-    RelPEType
 
 Transform2Func = {
     None: lambda x: x,

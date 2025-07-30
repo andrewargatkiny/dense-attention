@@ -411,10 +411,12 @@ class BertSelfLocalAttention(BertSelfAttention):
         mixed_value_layer = self.value(hidden_states)
 
         query_layer = self.transpose_for_local_scores(mixed_query_layer, num_windows)
-        query_layer = rope_cache.apply_local_relpe2(query_layer, self.window_size, num_windows)
         key_layer = self.transpose_for_local_scores(mixed_key_layer, num_windows)
-        key_layer = rope_cache.apply_local_relpe2(key_layer, self.window_size, num_windows)
         value_layer = self.transpose_for_local_scores(mixed_value_layer, num_windows)
+
+        if not self.apply_relpe_after:
+          query_layer = rope_cache.apply_local_relpe2(query_layer, self.window_size, num_windows)
+          key_layer = rope_cache.apply_local_relpe2(key_layer, self.window_size, num_windows)
         # Batch, Seq, Head, SubSeqLen, HeadDim
         #if torch.all(attention_mask == 0):
         attention_mask = None
@@ -422,7 +424,7 @@ class BertSelfLocalAttention(BertSelfAttention):
         #context_layer = torch.matmul(query_layer, kv)
         context_layer = self.attention_kernel(
             query_layer, key_layer, value_layer, attn_mask=attention_mask,
-            dropout_p=self.dropout_prob, causal=self.causal
+            dropout_p=self.dropout_prob, causal=self.causal, rope_cache=rope_cache
         )
         """
         context_layer = nn.functional.scaled_dot_product_attention(
