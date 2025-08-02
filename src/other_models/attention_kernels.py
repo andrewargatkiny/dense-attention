@@ -1,14 +1,9 @@
+import math
 import torch
 import torch.nn as nn
 from torch.nn.attention.flex_attention import create_block_mask, flex_attention
+from itertools import combinations_with_replacement
 
-Transform2Func = {
-    None: lambda x: x,
-    "identity": lambda  x: x,
-    "elu": nn.functional.elu,
-    "squared_relu": lambda x: nn.functional.relu(x) ** 2,
-    "1_plus_elu": lambda x: 1 + nn.functional.elu(x),
-}
 
 # FlexAttention doesn't work with class-namespace functions to allow dynamic
 # choice of window size as of PyTorch 2.5-2.6.
@@ -35,6 +30,103 @@ w_size_to_func = {
     128: sliding_window_mask_128, 256: sliding_window_mask_256,
     512: sliding_window_mask_512, 1024: sliding_window_mask_1024
 }
+
+
+class SymmetricPowerEmbedding(nn.Module):
+    def __init__(self, p: int):
+        super().__init__()
+        self.p = p
+        self.register_buffer('indices_tensor', None)
+        self.register_buffer('coeffs', None)
+        self._initialized = False
+
+    def _initialize_buffers(self, x: torch.Tensor):
+        d = x.shape[-1]
+        device = x.device
+        dtype = x.dtype
+        
+        # generates list of non-decreasing multiindices
+        indices = list(combinations_with_replacement(range(d), self.p))
+        self.indices_tensor = torch.tensor(indices, device=device, dtype=torch.long)
+        
+        # given a multiindex, counts how many times each index appears
+        counts = torch.zeros(len(indices), d, device=device, dtype=dtype)
+        ones = torch.ones_like(self.indices_tensor, dtype=dtype)
+        counts.scatter_add_(1, self.indices_tensor, ones)
+        
+        # computes multinomial coefficient
+        log_numerator = math.lgamma(self.p + 1)
+        log_denom = torch.lgamma(counts + 1).sum(dim=1)
+        log_coeffs = 0.5 * (log_numerator - log_denom)
+        self.coeffs = torch.exp(log_coeffs)
+
+        self._initialized = True
+
+    def forward(self, x: torch.Tensor):
+        if not self._initialized:
+            self._initialize_buffers(x)
+        
+        d = x.shape[-1]
+        norm_factor = math.pow(d, self.p / 2.0)
+        
+        # Computes the product over the last dimension (monomials of degree p)
+        selected = x[..., self.indices_tensor]
+        monomials = selected.prod(dim=-1)
+        
+        return (monomials * self.coeffs) / norm_factor
+
+
+class TensorPowerEmbedding(nn.Module):
+    def __init__(self, p: int):
+        super().__init__()
+        self.p = p
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        expanded_x = x
+        
+        for _ in range(self.p - 1):
+            x=x.unsqueeze(-2)
+            expanded_x = expanded_x.unsqueeze(-1) * x
+            
+        norm_factor = math.pow(x.shape[-1], self.p / 2.0) 
+
+        return expanded_x.flatten(start_dim=-self.p) / norm_factor
+
+
+class TaylorExp(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        d = x.shape[-1]
+        
+        r2 = math.sqrt(2)
+        rd = math.sqrt(d)
+        rrd = math.sqrt(math.sqrt(d))
+
+        x2 = (x.unsqueeze(-1) * x.unsqueeze(-2)).flatten(start_dim=-2) / r2
+        
+        term1 = torch.ones_like(x[..., :1])
+        term2 = x / rrd
+        term3 = x2 / rd
+        
+        return torch.cat([term1, term2, term3], dim=-1)
+
+    
+Transform2Func = {
+    None: lambda x: x,
+    "identity": lambda  x: x,
+    "elu": nn.functional.elu,
+    "squared_relu": lambda x: nn.functional.relu(x) ** 2,
+    "1_plus_elu": lambda x: 1 + nn.functional.elu(x),
+    "sym_power_2": SymmetricPowerEmbedding(p=2),
+    "sym_power_4": SymmetricPowerEmbedding(p=4),
+    "power_2": TensorPowerEmbedding(p=2),
+    "power_4": TensorPowerEmbedding(p=4),
+    "taylor_exp": TaylorExp()
+}
+
+
 class SoftmaxAttention(nn.Module):
     def __init__(self, config):
         super(SoftmaxAttention, self).__init__()
