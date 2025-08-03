@@ -371,6 +371,9 @@ class BertSelfAttention(nn.Module):
 class BertSelfLocalAttention(BertSelfAttention):
     def __init__(self, config):
         super(BertSelfLocalAttention, self).__init__(config)
+        if config.attention_kernel == "linear":
+            self.attention_kernel.set_local_relpe_state(use_local=True)
+
         self.window_size = config.window_size
         assert config.max_position_embeddings % self.window_size == 0
 
@@ -452,6 +455,8 @@ class BertSelfShiftedLocalAttention(BertSelfLocalAttention):
         else:
             self.left_pad = self.window_size // 2
             self.right_pad = self.window_size // 2
+        self.attention_kernel.local = True
+
 
     def forward(self, hidden_states, attention_mask, rope_cache):
         # hidden_states: Batch, SeqLen, EmbedDim
