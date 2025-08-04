@@ -455,8 +455,6 @@ class BertSelfShiftedLocalAttention(BertSelfLocalAttention):
         else:
             self.left_pad = self.window_size // 2
             self.right_pad = self.window_size // 2
-        self.attention_kernel.local = True
-
 
     def forward(self, hidden_states, attention_mask, rope_cache):
         # hidden_states: Batch, SeqLen, EmbedDim
