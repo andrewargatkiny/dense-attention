@@ -184,6 +184,7 @@ def train(args,
     for group in optimizer.param_groups:
         group['lr'] = lr_this_step
         if group['name'] != 'others_with_no_wd': group['weight_decay'] = args.config["training"]["weight_decay"]
+
     for _, batch in enumerate(tqdm(dataset_iterator, smoothing=1)):
         try:
             step_start = time.time()
@@ -494,6 +495,7 @@ def report_model_activations(args, model, data, step, bins=20, **kwargs):
                     title=f'nans and infs: {name}', series='n of -infs',
                     value=len(values[np.isneginf(values)].ravel()), iteration=step
                 )
+
             if finite_values.size == 0: return
             try:
                 vals = values#.mean(axis=-1)
@@ -675,7 +677,7 @@ def prepare_optimizer_parameters(args, model):
     #params_to_optimize = [n for n in params_to_optimize if #'pooler' not in n[0] and
     #                   'embeddings' not in n[0] and 'layer' not in n[0]]
     no_decay_list = ['bias', 'LayerNorm.bias', 'LayerNorm.weight',
-                    'activation.weight', 'layer_norm.weight']
+                     'activation.weight', 'layer_norm.weight']
     if args.no_decay_embeddings:
         no_decay_list += ['embeddings']
     if args.no_decay_pooler:
