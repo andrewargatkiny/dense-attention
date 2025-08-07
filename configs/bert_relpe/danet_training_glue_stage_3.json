@@ -1,0 +1,16 @@
+{
+    "training": {
+        "num_epochs": 236,
+        "lr_scheduler_params": {
+            "warmup_ratio": 0.0,
+            "warmup_degree": 1,
+            "degree": 1,
+            "one_cycle_steps": 122000
+        },
+        "lr_schedule": "cosine",
+        "lr_offset": 0,
+        "learning_rate": 1e-4,
+        "weight_decay": 0.02,
+        "num_workers": 4
+    }
+}

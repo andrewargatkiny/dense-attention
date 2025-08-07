@@ -18,9 +18,9 @@ from tqdm import tqdm
 
 from src.model_config import ModelConfig
 from utils.tasks import TaskRegistry
-from train_arguments import get_argument_parser
+from train_arguments import get_argument_parser, override_configs
 from utils.logger import Logger
-from utils.optimization import warmup_exp_decay_exp, cosine_poly_warmup_decay
+from utils.optimization import warmup_exp_decay_exp, cosine_poly_warmup_decay, linear_warmup_cosine_decay
 from train_utils import is_time_to_exit, master_process, TensorBoardWriter, WandBWriter, manage_checkpoints, get_num_params
 
 from data.dataset_utils import ShardedDatasetWrapper, create_dataloader
@@ -332,12 +332,19 @@ def update_learning_rate(args, config, current_global_step, optimizer):
                 config["training"]["decay_step"],
                 config["training"]["one_cycle_steps"],
                 config["training"]["warmup_proportion"])
+    # Due to historic reasons, this option is called cosine,
+    # but it's really polynomial warmup, polynomial decay.
     elif lr_schedule == "cosine":
         #print(f'LR Schedule is {args.lr_schedule} EP')
         lr_this_step = config["training"][
             "learning_rate"] * cosine_poly_warmup_decay(
                 global_step_for_lr, **config["training"]["lr_scheduler_params"]
         )
+    elif lr_schedule == "true_cosine":
+        lr_this_step = linear_warmup_cosine_decay(
+                global_step_for_lr, **config["training"]["lr_scheduler_params"]
+        )
+
     elif lr_schedule == 'constant':
         lr_this_step = config["training"]["learning_rate"]
     else:
@@ -523,12 +530,12 @@ def report_model_weights(args, model, step, bins=20):
         parameters by adding the corresponding prefix.
         """
         full_path = lambda name, is_layer=True: '.'.join(["module",
-            model.PATH_TO_BACKBONE, 
+            model.PATH_TO_BACKBONE,
             (backbone.PATH_TO_LAYERS if is_layer else backbone.PATH_TO_EMBEDDINGS),
             name])
         embeddings_params = {
-            full_path(name, is_layer=False): ('Embedding parameters', name) 
-            for name, param in 
+            full_path(name, is_layer=False): ('Embedding parameters', name)
+            for name, param in
             embeddings.named_parameters()
         }
         layers_params = {
@@ -603,12 +610,14 @@ def get_arguments():
 
 def construct_arguments():
     args = get_arguments()
-
     # Prepare Logger
     logger = Logger(cuda=torch.cuda.is_available() and not args.no_cuda)
     args.logger = logger
     config = json.load(open(args.config_file, 'r', encoding='utf-8'))
     args.config = config
+    args.deepspeed_config = json.load(
+        open(args.deepspeed_config, 'r', encoding='utf-8'))    
+
     if args.model_config_file and args.model_config_file != args.config_file:
         model_config = json.load(
             open(args.model_config_file, 'r', encoding='utf-8')
@@ -624,8 +633,12 @@ def construct_arguments():
             open(args.train_config_file, 'r', encoding='utf-8')
         )
         args.config["training"] = train_config["training"]
+    
+    # Overriding parameters in configs
+    if args.override:
+        override_configs(args)
+    
     args.task = TaskRegistry.get_task(args.task_type)
-
     args.job_name = config['name'] if args.job_name is None else args.job_name
     print("Running Config File: ", args.job_name)
     # Setting the distributed variables
@@ -656,8 +669,8 @@ def construct_arguments():
 
 def prepare_optimizer_parameters(args, model):
     config = args.config
-    deepspeed_config = json.load(
-        open(args.deepspeed_config, 'r', encoding='utf-8'))
+    # deepspeed_config = json.load(
+    #     open(args.deepspeed_config, 'r', encoding='utf-8'))
     params_to_optimize = list(model.named_parameters())
     #params_to_optimize = [n for n in params_to_optimize if #'pooler' not in n[0] and
     #                   'embeddings' not in n[0] and 'layer' not in n[0]]

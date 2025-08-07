@@ -1,6 +1,8 @@
 import sys
 import argparse
+import json
 
+   
 def get_argument_parser():
     parser = argparse.ArgumentParser()
 
@@ -379,6 +381,113 @@ def get_argument_parser():
         default="nccl",
         help='Backend for distributed training.'
     )
-
+    parser.add_argument(
+        '--override',
+        type=str,
+        default=[],
+        nargs='*',
+        help='Override parameters for config files. Accepts values in the form '
+             '"cf.key=val" or "ds.key=val" to override nested values in the model (cf) '
+             'or deepspeed (ds) configs. For nested keys, use dot notation: '
+             'key = key1.key2.key3.'
+        
+    )
 
     return parser
+
+
+"""
+Configuration override implementation.
+Inspired by the implementation in the flame project:
+https://github.com/fla-org/flame
+"""
+def parse_override_string(override: str):
+    """Parse a single override string in the format 'cf.key=value' or 'ds.key=value'.
+    """
+    first_dot = override.find('.')
+    end_eq = override.find('=')
+    
+    if first_dot == -1 or end_eq == -1:
+        raise ValueError(f"Invalid override format: '{override}' (expected: cf.key=value or ds.key=value)")
+    
+    cfg_name = override[:first_dot]
+    key_path = override[first_dot + 1:end_eq]
+    value = override[end_eq + 1:]
+    
+    print(f"Parsed override: key_path={key_path}, value={value}")
+    return (cfg_name, key_path, value)
+
+def set_nested_checked(config_dict: dict, key_path: str, value):
+    """Safely set a nested value in a configuration dictionary, validating the path exists.
+    """
+    keys = key_path.split('.')
+    target_dict = config_dict
+
+    for key in keys[:-1]:
+        if key not in target_dict or not isinstance(target_dict[key], dict):
+            raise KeyError(f"The path '{key_path}' does not exist under the key '{key}'")
+        target_dict = target_dict[key]
+
+    final_key = keys[-1]
+    if final_key not in target_dict:
+        raise KeyError(f"The final key '{final_key}' does not exist in '{key_path}'")
+
+    target_dict[final_key] = value
+    print(f"Set {key_path} = {value}")
+    
+def parse_value(val: str):
+    """
+    Parses a string into the appropriate JSON-compatible type.
+    If parsing fails, returns the original string.
+
+    Supported types:
+    - int:        "1", "32"
+    - float:      "0.011", "1e-16"
+    - bool:       "true", "false"
+    - list:       "[0.9, 0.9]"
+    - dict:       '{"inputs":"input/train.src","labels":"label/train.label"}'
+    - str:        "\"input/train.src\"", "input/train.src"
+
+    Examples:
+        parse_value("1")                                → 1 (int)
+        parse_value("false")                            → False (bool)
+        parse_value("1e-16")                            → 1e-16 (float)
+        parse_value("[0.9, 0.9]")                       → [0.9, 0.9] (list)
+        parse_value("\"input/train.src\"")              → "input/train.src" (str, JSON string)
+        parse_value("input/train.src")                  → "input/train.src" (raw string)
+        parse_value('{"inputs":"input/train.src","labels":"label/train.label"}')
+                                                        → {"inputs": "input/train.src",
+                                                        "labels": "label/train.label"} (dict)
+
+    Notes:
+    - String values can be written as: "text" or text (no need for escape sequences).
+    - For dictionaries, use single quotes around the full JSON object.
+    """
+    try:
+        return json.loads(val)
+    except json.JSONDecodeError:
+        return val
+
+def apply_overrides(configs: dict[str, dict], overrides: list[tuple[str, str, str]]):
+    """Apply a list of parsed overrides to their respective configuration dictionaries.
+    """
+    for cfg_name, key_path, raw_value in overrides:
+        if cfg_name not in configs:
+            raise KeyError(f"Use --override cf. or --override ds.")
+        value = parse_value(raw_value)
+        set_nested_checked(configs[cfg_name], key_path, value)
+
+def override_configs(args):
+    """Load, apply overrides, and save configuration files based on CLI arguments.
+    """
+    configs = {
+        "cf": args.config,
+        "ds": args.deepspeed_config
+    }
+    
+    overrides = [parse_override_string(ovr) for ovr in args.override]
+    apply_overrides(configs, overrides)
+    print("Args updated: args.config and args.deepspeed_config now hold dicts")
+
+    return args
+    

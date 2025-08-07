@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from torch.nn.attention.flex_attention import create_block_mask, flex_attention
+from src.positional_embeddings import RelPEBase
 
 Transform2Func = {
     None: lambda x: x,
@@ -27,10 +28,13 @@ def sliding_window_mask_256(b, h, q_idx, kv_idx):
 def sliding_window_mask_512(b, h, q_idx, kv_idx):
     return (q_idx >= kv_idx) & ((q_idx - kv_idx) < 512)
 
+def sliding_window_mask_1024(b, h, q_idx, kv_idx):
+    return (q_idx >= kv_idx) & ((q_idx - kv_idx) < 1024)
+
 w_size_to_func = {
     32: sliding_window_mask_32, 64: sliding_window_mask_64,
     128: sliding_window_mask_128, 256: sliding_window_mask_256,
-    512: sliding_window_mask_512
+    512: sliding_window_mask_512, 1024: sliding_window_mask_1024
 }
 class SoftmaxAttention(nn.Module):
     def __init__(self, config):
@@ -38,7 +42,7 @@ class SoftmaxAttention(nn.Module):
 
     def forward(self, queries: torch.Tensor,
                 keys: torch.Tensor, values: torch.Tensor,
-                attn_mask: torch.Tensor, dropout_p: float, causal: bool):
+                attn_mask: torch.Tensor, dropout_p: float, causal: bool, **kwargs):
         return nn.functional.scaled_dot_product_attention(
             queries, keys, values, attn_mask=attn_mask,
             dropout_p=dropout_p, is_causal=causal
@@ -54,7 +58,7 @@ class SlidingWindowAttention(nn.Module):
 
     def forward(self, queries: torch.Tensor,
                 keys: torch.Tensor, values: torch.Tensor,
-                attn_mask: torch.Tensor, dropout_p: float, causal: bool):
+                attn_mask: torch.Tensor, dropout_p: float, causal: bool, **kwargs):
         batch_shape = queries.shape[:-2]  # could be (B,) or (B, H) etc.
         B = queries.shape[0]
         L = queries.shape[-2]  # sequence length
@@ -90,10 +94,12 @@ class LinearAttention(nn.Module):
         if self.no_reweight:
             self.forward_linear = self._forward_linear_no_norm
             self.forward_quadratic = self._forward_quadratic_no_norm
+        self.apply_relpe_after = config.apply_relpe_after
+        self.local = False
 
     def forward(self, queries: torch.Tensor,
                 keys: torch.Tensor, values: torch.Tensor,
-                attn_mask: torch.Tensor, dropout_p: float, causal: bool):
+                attn_mask: torch.Tensor, dropout_p: float, causal: bool, rope_cache: RelPEBase):
         # TODO: implement causal linear attention
         queries = self.feature_map(queries)
         queries = nn.functional.dropout(queries,p=dropout_p)
@@ -101,10 +107,20 @@ class LinearAttention(nn.Module):
         keys = nn.functional.dropout(keys,p=dropout_p)
         shape = queries.shape
         n, d = shape[-2], shape[-1]
+        if self.apply_relpe_after:
+          if self.local:
+            queries = rope_cache.apply_relpe(queries)
+            keys = rope_cache.apply_relpe(keys)
+          else:
+            queries = rope_cache.apply_relpe2(queries)
+            keys = rope_cache.apply_relpe2(keys)
         if n < d:
             return self.forward_quadratic(queries, keys, values, attn_mask, dropout_p)
         else:
             return self.forward_linear(queries, keys, values, attn_mask, dropout_p)
+
+    def set_local_relpe_state(self, use_local=True):
+        local = use_local
 
     def _forward_linear(self, queries: torch.Tensor,
                         keys: torch.Tensor, values: torch.Tensor,

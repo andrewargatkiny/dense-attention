@@ -10,6 +10,8 @@
         "swiglu_ffn": true,
         "attention_complexity": "quadratic",
         "attention_probs_dropout_prob": 0.05,
+        "pre_attn_ln_type": "scaled_max_norm",
+        "post_attn_ln_type": "prescaled_max_norm",
         "embedding_ln_type": "standard_ln",
         "embedding_dropout": 0.05,
         "max_position_embeddings": 512,

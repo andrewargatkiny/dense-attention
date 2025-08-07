@@ -16,6 +16,10 @@ BASE_JOB_NAME="lra_pathfinder_32"
 CHECKPOINT_BASE_PATH=""
 CHECKPOINT_EPOCH_NAME=""
 
+JOB_NAME_SUFFIX=${JOB_NAME_SUFFIX-"_$(date +'%Y-%m-%d_%H-%M')"}
+OVERRIDE_ARGS=()
+
+# Check if we're resuming from a checkpoint
 if [ "${1-}" = "--resume" ]; then
   shift
   # Handle EPOCH or the keyword 'last'
@@ -27,8 +31,12 @@ if [ "${1-}" = "--resume" ]; then
     LOAD_EPOCH=""
   fi
 
-  [ $# -ge 1 ] || { echo "Usage: $0 --resume [EPOCH|last] JOB_NAME"; exit 1; }
-  SUBDIR=$1
+  [ $# -ge 1 ] || {
+    echo "Usage: $0 --resume [EPOCH|last] JOB_NAME"
+    echo "   or: $0 --resume [EPOCH|last] JOB_NAME --override cf.key=value ds.key=value ..."
+    exit 1
+  }
+  SUBDIR=$1; shift
 
   CHECKPOINT_BASE_PATH="${OUTPUT_DIR}/saved_models/${SUBDIR}"
 
@@ -42,12 +50,15 @@ if [ "${1-}" = "--resume" ]; then
 
   echo ">> Resuming from checkpoint: $CHECKPOINT_EPOCH_NAME"
 
-  DATESTAMP=$(date +'%Y-%m-%d_%H-%M')
-  JOB_NAME="${SUBDIR}_from_epoch_${LOAD_EPOCH}_${DATESTAMP}"
+
+  JOB_NAME="${SUBDIR}_from_epoch_${LOAD_EPOCH}${JOB_NAME_SUFFIX}"
 else
   # Set up for initial training
-  DATESTAMP=$(date +'%Y-%m-%d_%H-%M')
-  JOB_NAME="${BASE_JOB_NAME}_${DATESTAMP}"
+  JOB_NAME="${BASE_JOB_NAME}${JOB_NAME_SUFFIX}"
+fi
+
+if [ "${1-}" = "--override" ]; then
+  OVERRIDE_ARGS=( "${@:2}" )
 fi
 
 mkdir -p $OUTPUT_DIR
@@ -75,4 +86,5 @@ NCCL_TREE_THRESHOLD=0 deepspeed --include localhost:"$NODE" --master_port "$MAST
 --keep_last_ckpts 3 \
 --ckpt_to_save 1 \
 --project_name "lra-pathfinder-32" \
+--override ${OVERRIDE_ARGS[@]} \
 &> ${JOB_NAME}.log

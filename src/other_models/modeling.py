@@ -103,6 +103,7 @@ class TransformerConfig(object):
                  causal=False,
                  local_attention=False,
                  window_size=1024,
+                 apply_relpe_after=False,
                  **kwargs):
         """Constructs ModelConfig.
 
@@ -128,6 +129,8 @@ class TransformerConfig(object):
                 `BertModel`.
             initializer_range: The sttdev of the truncated_normal_initializer for
                 initializing all weight matrices.
+            apply_relpe_after: Whether Relative Positional Encoding (RELPE) is applied after the feature map (if true)
+             or before the linear attention kernel (if false).
         """
         if isinstance(vocab_size_or_config_json_file, str):
             with open(vocab_size_or_config_json_file, "r",
@@ -157,6 +160,7 @@ class TransformerConfig(object):
             self.causal = causal
             self.local_attention = local_attention
             self.window_size = window_size
+            self.apply_relpe_after = apply_relpe_after
         else:
             raise ValueError(
                 "First argument must be either a vocabulary size (int)"
@@ -305,7 +309,7 @@ class BertSelfAttention(nn.Module):
 
         self.dropout = nn.Dropout(config.attention_probs_dropout_prob)
         self.dropout_prob = config.attention_probs_dropout_prob
-
+        self.apply_relpe_after = config.apply_relpe_after
     def transpose_for_scores(self, x):
         new_x_shape = x.size()[:-1] + (self.num_attention_heads,
                                        self.attention_head_size)
@@ -319,9 +323,10 @@ class BertSelfAttention(nn.Module):
         mixed_value_layer = self.value(hidden_states)
 
         query_layer = self.transpose_for_scores(mixed_query_layer)
-        query_layer = rope_cache.apply_relpe(query_layer)
         key_layer = self.transpose_for_scores(mixed_key_layer)
-        key_layer = rope_cache.apply_relpe(key_layer)
+        if not self.apply_relpe_after:
+          query_layer = rope_cache.apply_relpe(query_layer)
+          key_layer = rope_cache.apply_relpe(key_layer)
         value_layer = self.transpose_for_scores(mixed_value_layer)
         #if torch.all(attention_mask == 0):
         attention_mask = None
@@ -330,7 +335,7 @@ class BertSelfAttention(nn.Module):
         #attention_mask = None
         context_layer = self.attention_kernel(
             query_layer, key_layer, value_layer, attn_mask=attention_mask,
-            dropout_p=self.dropout_prob, causal=self.causal
+            dropout_p=self.dropout_prob, causal=self.causal, rope_cache=rope_cache
         )
         """
         context_layer = nn.functional.scaled_dot_product_attention(
@@ -366,6 +371,9 @@ class BertSelfAttention(nn.Module):
 class BertSelfLocalAttention(BertSelfAttention):
     def __init__(self, config):
         super(BertSelfLocalAttention, self).__init__(config)
+        if config.attention_kernel == "linear":
+            self.attention_kernel.set_local_relpe_state(use_local=True)
+
         self.window_size = config.window_size
         assert config.max_position_embeddings % self.window_size == 0
 
@@ -406,10 +414,12 @@ class BertSelfLocalAttention(BertSelfAttention):
         mixed_value_layer = self.value(hidden_states)
 
         query_layer = self.transpose_for_local_scores(mixed_query_layer, num_windows)
-        query_layer = rope_cache.apply_local_relpe2(query_layer, self.window_size, num_windows)
         key_layer = self.transpose_for_local_scores(mixed_key_layer, num_windows)
-        key_layer = rope_cache.apply_local_relpe2(key_layer, self.window_size, num_windows)
         value_layer = self.transpose_for_local_scores(mixed_value_layer, num_windows)
+
+        if not self.apply_relpe_after:
+          query_layer = rope_cache.apply_local_relpe2(query_layer, self.window_size, num_windows)
+          key_layer = rope_cache.apply_local_relpe2(key_layer, self.window_size, num_windows)
         # Batch, Seq, Head, SubSeqLen, HeadDim
         #if torch.all(attention_mask == 0):
         attention_mask = None
@@ -417,7 +427,7 @@ class BertSelfLocalAttention(BertSelfAttention):
         #context_layer = torch.matmul(query_layer, kv)
         context_layer = self.attention_kernel(
             query_layer, key_layer, value_layer, attn_mask=attention_mask,
-            dropout_p=self.dropout_prob, causal=self.causal
+            dropout_p=self.dropout_prob, causal=self.causal, rope_cache=rope_cache
         )
         """
         context_layer = nn.functional.scaled_dot_product_attention(
