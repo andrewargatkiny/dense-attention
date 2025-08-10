@@ -109,11 +109,12 @@ class LinearAttention(nn.Module):
         n, d = shape[-2], shape[-1]
         if self.apply_relpe_after:
           if self.local:
+            queries = rope_cache.apply_local_relpe2(queries)
+            keys = rope_cache.apply_local_relpe2(keys)
+          else:
             queries = rope_cache.apply_relpe(queries)
             keys = rope_cache.apply_relpe(keys)
-          else:
-            queries = rope_cache.apply_relpe2(queries)
-            keys = rope_cache.apply_relpe2(keys)
+
         if n < d:
             return self.forward_quadratic(queries, keys, values, attn_mask, dropout_p)
         else:
