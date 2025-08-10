@@ -114,6 +114,7 @@ class LinearAttention(nn.Module):
           else:
             queries = rope_cache.apply_relpe(queries)
             keys = rope_cache.apply_relpe(keys)
+
         if n < d:
             return self.forward_quadratic(queries, keys, values, attn_mask, dropout_p)
         else:

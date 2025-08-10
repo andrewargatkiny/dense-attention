@@ -20,7 +20,7 @@ from src.model_config import ModelConfig
 from utils.tasks import TaskRegistry
 from train_arguments import get_argument_parser, override_configs
 from utils.logger import Logger
-from utils.optimization import warmup_exp_decay_exp, cosine_poly_warmup_decay
+from utils.optimization import warmup_exp_decay_exp, cosine_poly_warmup_decay, linear_warmup_cosine_decay
 from train_utils import is_time_to_exit, master_process, TensorBoardWriter, WandBWriter, manage_checkpoints, get_num_params
 
 from data.dataset_utils import ShardedDatasetWrapper, create_dataloader
@@ -184,6 +184,7 @@ def train(args,
     for group in optimizer.param_groups:
         group['lr'] = lr_this_step
         if group['name'] != 'others_with_no_wd': group['weight_decay'] = args.config["training"]["weight_decay"]
+
     for _, batch in enumerate(tqdm(dataset_iterator, smoothing=1)):
         try:
             step_start = time.time()
@@ -332,12 +333,19 @@ def update_learning_rate(args, config, current_global_step, optimizer):
                 config["training"]["decay_step"],
                 config["training"]["one_cycle_steps"],
                 config["training"]["warmup_proportion"])
+    # Due to historic reasons, this option is called cosine,
+    # but it's really polynomial warmup, polynomial decay.
     elif lr_schedule == "cosine":
         #print(f'LR Schedule is {args.lr_schedule} EP')
         lr_this_step = config["training"][
             "learning_rate"] * cosine_poly_warmup_decay(
                 global_step_for_lr, **config["training"]["lr_scheduler_params"]
         )
+    elif lr_schedule == "true_cosine":
+        lr_this_step = linear_warmup_cosine_decay(
+                global_step_for_lr, **config["training"]["lr_scheduler_params"]
+        )
+
     elif lr_schedule == 'constant':
         lr_this_step = config["training"]["learning_rate"]
     else:
@@ -487,6 +495,7 @@ def report_model_activations(args, model, data, step, bins=20, **kwargs):
                     title=f'nans and infs: {name}', series='n of -infs',
                     value=len(values[np.isneginf(values)].ravel()), iteration=step
                 )
+
             if finite_values.size == 0: return
             try:
                 vals = values#.mean(axis=-1)
@@ -523,12 +532,12 @@ def report_model_weights(args, model, step, bins=20):
         parameters by adding the corresponding prefix.
         """
         full_path = lambda name, is_layer=True: '.'.join(["module",
-            model.PATH_TO_BACKBONE, 
+            model.PATH_TO_BACKBONE,
             (backbone.PATH_TO_LAYERS if is_layer else backbone.PATH_TO_EMBEDDINGS),
             name])
         embeddings_params = {
-            full_path(name, is_layer=False): ('Embedding parameters', name) 
-            for name, param in 
+            full_path(name, is_layer=False): ('Embedding parameters', name)
+            for name, param in
             embeddings.named_parameters()
         }
         layers_params = {
@@ -668,7 +677,7 @@ def prepare_optimizer_parameters(args, model):
     #params_to_optimize = [n for n in params_to_optimize if #'pooler' not in n[0] and
     #                   'embeddings' not in n[0] and 'layer' not in n[0]]
     no_decay_list = ['bias', 'LayerNorm.bias', 'LayerNorm.weight',
-                    'activation.weight', 'layer_norm.weight']
+                     'activation.weight', 'layer_norm.weight']
     if args.no_decay_embeddings:
         no_decay_list += ['embeddings']
     if args.no_decay_pooler:

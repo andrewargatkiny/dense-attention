@@ -62,17 +62,43 @@ class DummyRelPE(RelPEBase):
 
 class RoPE(RelPEBase):
     def __init__(self, seq_len: int, n_elem: int,
-                 base: int = 10000, num_heads=None):
+                 base: int = 10000, num_heads=None, emb_fraction=1.0):
         super(RoPE, self).__init__()
         """Enhanced Transformer with Rotary Position Embedding.
 
-        Derived from: https://github.com/labmlai/annotated_deep_learning_paper_implementations/blob/master/labml_nn/
-        transformers/rope/__init__.py. MIT License:
+        Derived from: https://github.com/labmlai/annotated_deep_learning_paper_implementations/blob/master/labml_nn/transformers/rope/__init__.py. 
+        MIT License:
         https://github.com/labmlai/annotated_deep_learning_paper_implementations/blob/master/license.
+        
+        Parameters
+        ----------
+        seq_len : int
+            Maximum length of input sequence. RoPE cache will have this length 
+            in the sequence dimension.     
+        n_elem : int
+            Embedding dimension of one head
+        base : int
+            RoPE \Theta base. Default is 10000.     
+        num_heads : int, optional
+            Number of heads. Defaults to None. If supplied, cached RoPE buffers 
+            take form of `bs (1), seqlen, n_elem * num_heads`, else 
+            `bs (1), headdim (1), seqlen, n_elem`.
+        emb_fraction: float
+            Fraction of the embedding dimension to which RoPE should be 
+            applied. Default is 1.
         """
         # $\Theta = {\theta_i = 10000^{\frac{2(i-1)}{d}}, i \in [1, 2, ..., \frac{d}{2}]}$
         theta = 1.0 / (base ** (torch.arange(0, n_elem, 2) / n_elem))
         # theta = 1.0 / (base ** (torch.ones(n_elem // 2) / n_elem))
+
+        if emb_fraction != 1.0:
+            n_elem_rope = int(n_elem * emb_fraction)
+            # RoPE dimension should be divisible by 2.
+            n_elem_rope = n_elem_rope - n_elem_rope % 2
+            theta_rope = 1.0 / (base ** (torch.arange(0, n_elem_rope, 2)
+                                         / n_elem_rope))
+            theta = torch.ones(size=(n_elem // 2,))
+            theta[:n_elem_rope // 2] = theta_rope
 
         # Create position indexes `[0, 1, ..., seq_len - 1]`
         seq_idx = torch.arange(seq_len)
