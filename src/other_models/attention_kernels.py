@@ -33,54 +33,79 @@ w_size_to_func = {
 
 
 class SymmetricPowerEmbedding(nn.Module):
-    def __init__(self, p: int):
+    """
+    Symmetric Power Embedding for Linear Transformers.
+    
+    This module implements the symmetric power embedding function for linear transformers.
+    Computes tensor-based embeddings of queries and keys based on tensor symmetry,
+    reducing the dimensionality of the resulting queries and keys.
+
+    Args:
+        config : a ModelConfig class instance with the configuration
+        p : The degree of the symmetric tensor product. Controls the state size.
+
+    References:
+        Symmetric Power Transformers. Manifest AI.
+        https://manifestai.com/articles/symmetric-power-transformers/
+
+    """
+    def __init__(self, config, p: int):
         super().__init__()
         self.p = p
-        self.register_buffer('indices_tensor', None)
-        self.register_buffer('coeffs', None)
-        self._initialized = False
+        self.d = config.hidden_size // config.num_attention_heads
+        # self.norm_factor = math.pow(self.d, self.p / 4.0)
+        
+        self.register_buffer('indices_tensor', None, persistent=False)
+        self.register_buffer('coeffs', None, persistent=False)
 
-    def _initialize_buffers(self, x: torch.Tensor):
-        d = x.shape[-1]
-        device = x.device
-        dtype = x.dtype
-        
         # generates list of non-decreasing multiindices
-        indices = list(combinations_with_replacement(range(d), self.p))
-        self.indices_tensor = torch.tensor(indices, device=device, dtype=torch.long)
-        
+        # num_monomials = C(d+p-1, p)
+        # indices: num_monomials, p
+        indices = list(combinations_with_replacement(range(self.d), self.p))
+        indices_tensor = torch.tensor(indices, dtype=torch.long)
+        self.indices_tensor = indices_tensor  # сохраняем в буфер
+
         # given a multiindex, counts how many times each index appears
-        counts = torch.zeros(len(indices), d, device=device, dtype=dtype)
-        ones = torch.ones_like(self.indices_tensor, dtype=dtype)
-        counts.scatter_add_(1, self.indices_tensor, ones)
+        counts = torch.zeros(len(indices), self.d, dtype=torch.float32)
+        ones = torch.ones_like(indices_tensor, dtype=torch.float32)
+        # counts: num_monomials, d
         
+        # For each monomial (row), adds 1 to counts[m, j] whenever variable j
+        # appears in indices_tensor[m]. Records how many times each variable
+        # occurs in each monomial.
+        counts.scatter_add_(dim=1, index=self.indices_tensor, src=ones)
+
         # computes multinomial coefficient
+        # lgamma(n+1) = ln(Г(n+1)) = ln(n!)
+        # PyTorch doesn't provide factorial directly, so lgamma is used
+        # coeffs[m] = sqrt(p! / (count_1! * count_2! * ...)) = exp(ln(coeffs[m]))
+        # ln(coeffs[m]) = 0.5*(ln(p!) - (ln(count_1!) + ln(ncount_2!) + ...))
         log_numerator = math.lgamma(self.p + 1)
         log_denom = torch.lgamma(counts + 1).sum(dim=1)
         log_coeffs = 0.5 * (log_numerator - log_denom)
-        self.coeffs = torch.exp(log_coeffs)
-
-        self._initialized = True
+        
+        # coeffs: num_monomials
+        coeffs = torch.exp(log_coeffs)
+        self.coeffs = coeffs
 
     def forward(self, x: torch.Tensor):
-        if not self._initialized:
-            self._initialize_buffers(x)
-        
-        d = x.shape[-1]
-        norm_factor = math.pow(d, self.p / 2.0)
-        
         # Computes the product over the last dimension (monomials of degree p)
+        # Select coordinates according to multi-indices
+        # Example: if index=(0,2), we take x[...,0] and x[...,2]
         selected = x[..., self.indices_tensor]
-        monomials = selected.prod(dim=-1)
+        # selected: Batch, ..., SeqLen, num_monomials, p
         
-        return (monomials * self.coeffs) / norm_factor
+        monomials = selected.prod(dim=-1)
+        # monomials: Batch, ..., SeqLen, num_monomials
+
+        return (monomials * self.coeffs)
 
 
 class TensorPowerEmbedding(nn.Module):
-    def __init__(self, p: int, config):
+    def __init__(self, config, p: int):
         super().__init__()
         self.p = p
-        self.norm_factor = math.pow(config.hidden_size, self.p / 2.0)
+        # self.norm_factor = math.pow(config.hidden_size // config.num_attention_heads, self.p / 4.0)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         expanded_x = x
@@ -95,7 +120,7 @@ class TensorPowerEmbedding(nn.Module):
 class Based(nn.Module):
     def __init__(self, config):
         super().__init__()
-        d = config.hidden_size
+        d = config.hidden_size // config.num_attention_heads
         
         self.r2 = math.sqrt(2)
         self.rd = math.sqrt(d)
@@ -112,15 +137,15 @@ class Based(nn.Module):
 
     
 Transform2Func = {
-    "identity": lambda config=None: lambda x: x,
-    "elu": lambda config=None: nn.functional.elu,
-    "squared_relu": lambda config=None: lambda x: nn.functional.relu(x) ** 2,
-    "1_plus_elu": lambda config=None: lambda x: 1 + nn.functional.elu(x),
-    "sym_power_2": lambda config=None: SymmetricPowerEmbedding(p=2),
-    "sym_power_4": lambda config=None: SymmetricPowerEmbedding(p=4),
-    "power_2": lambda config=None: TensorPowerEmbedding(p=2, config=config),
-    "power_4": lambda config=None: TensorPowerEmbedding(p=4, config=config),
-    "based": lambda config=None: Based(config),
+    "identity": lambda config: lambda x: x,
+    "elu": lambda config: nn.functional.elu,
+    "squared_relu": lambda config: lambda x: nn.functional.relu(x) ** 2,
+    "1_plus_elu": lambda config: lambda x: 1 + nn.functional.elu(x),
+    "sym_power_2": lambda config: SymmetricPowerEmbedding(config, p=2),
+    "sym_power_4": lambda config: SymmetricPowerEmbedding(config, p=4),
+    "power_2": lambda config: TensorPowerEmbedding(config, p=2),
+    "power_4": lambda config: TensorPowerEmbedding(config, p=4),
+    "based": lambda config: Based(config),
 }
 
 class SoftmaxAttention(nn.Module):
