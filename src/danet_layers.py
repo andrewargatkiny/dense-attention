@@ -97,6 +97,7 @@ class TransformerLayer(nn.Module):
         code = self.local_scheme[layer_number % len(self.local_scheme)]
         config.attention_kernel = self.code_to_kernel[code]
         attention_class = self.code_to_layer[code]
+        config.apply_relpe_after = False
         config.num_attention_heads = config.transformer_heads
         self.rope_cache = RoPE(
             config.max_position_embeddings, #args.max_seq_length
