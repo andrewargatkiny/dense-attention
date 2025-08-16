@@ -77,55 +77,51 @@ class SymmetricPowerEmbedding(nn.Module):
 
 
 class TensorPowerEmbedding(nn.Module):
-    def __init__(self, p: int):
+    def __init__(self, p: int, config):
         super().__init__()
         self.p = p
+        self.norm_factor = math.pow(config.hidden_size, self.p / 2.0)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         expanded_x = x
         
         for _ in range(self.p - 1):
-            x=x.unsqueeze(-2)
+            x = x.unsqueeze(-2)
             expanded_x = expanded_x.unsqueeze(-1) * x
-            
-        norm_factor = math.pow(x.shape[-1], self.p / 2.0) 
 
-        return expanded_x.flatten(start_dim=-self.p) / norm_factor
+        return expanded_x.flatten(start_dim=-self.p)
 
 
-class TaylorExp(nn.Module):
-    def __init__(self):
+class Based(nn.Module):
+    def __init__(self, config):
         super().__init__()
+        d = config.hidden_size
+        
+        self.r2 = math.sqrt(2)
+        self.rd = math.sqrt(d)
+        self.rrd = math.sqrt(math.sqrt(d))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        d = x.shape[-1]
-        
-        r2 = math.sqrt(2)
-        rd = math.sqrt(d)
-        rrd = math.sqrt(math.sqrt(d))
-
-        x2 = (x.unsqueeze(-1) * x.unsqueeze(-2)).flatten(start_dim=-2) / r2
+        x2 = (x.unsqueeze(-1) * x.unsqueeze(-2)).flatten(start_dim=-2) / self.r2
         
         term1 = torch.ones_like(x[..., :1])
-        term2 = x / rrd
-        term3 = x2 / rd
+        term2 = x / self.rrd
+        term3 = x2 / self.rd
         
         return torch.cat([term1, term2, term3], dim=-1)
 
     
 Transform2Func = {
-    None: lambda x: x,
-    "identity": lambda  x: x,
-    "elu": nn.functional.elu,
-    "squared_relu": lambda x: nn.functional.relu(x) ** 2,
-    "1_plus_elu": lambda x: 1 + nn.functional.elu(x),
-    "sym_power_2": SymmetricPowerEmbedding(p=2),
-    "sym_power_4": SymmetricPowerEmbedding(p=4),
-    "power_2": TensorPowerEmbedding(p=2),
-    "power_4": TensorPowerEmbedding(p=4),
-    "taylor_exp": TaylorExp()
+    "identity": lambda config=None: lambda x: x,
+    "elu": lambda config=None: nn.functional.elu,
+    "squared_relu": lambda config=None: lambda x: nn.functional.relu(x) ** 2,
+    "1_plus_elu": lambda config=None: lambda x: 1 + nn.functional.elu(x),
+    "sym_power_2": lambda config=None: SymmetricPowerEmbedding(p=2),
+    "sym_power_4": lambda config=None: SymmetricPowerEmbedding(p=4),
+    "power_2": lambda config=None: TensorPowerEmbedding(p=2, config=config),
+    "power_4": lambda config=None: TensorPowerEmbedding(p=4, config=config),
+    "based": lambda config=None: Based(config),
 }
-
 
 class SoftmaxAttention(nn.Module):
     def __init__(self, config):
@@ -177,14 +173,15 @@ class SlidingWindowAttention(nn.Module):
 class LinearAttention(nn.Module):
     def __init__(self, config, eps=1e-6):
         super(LinearAttention, self).__init__()
-        self.feature_map = Transform2Func[config.feature_map]
         self.no_reweight = config.no_reweight
         self.forward_linear = self._forward_linear
         self.forward_quadratic = self._forward_quadratic
         self.eps = eps
         if self.no_reweight:
             self.forward_linear = self._forward_linear_no_norm
-            self.forward_quadratic = self._forward_quadratic_no_norm
+            self.forward_quadratic = self._forward_quadratic_no_norm  
+        transform = Transform2Func[config.feature_map]
+        self.feature_map = transform(config)
 
     def forward(self, queries: torch.Tensor,
                 keys: torch.Tensor, values: torch.Tensor,
