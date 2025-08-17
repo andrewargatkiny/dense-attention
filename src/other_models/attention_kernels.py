@@ -35,18 +35,16 @@ w_size_to_func = {
 
 class SymmetricPowerEmbedding(nn.Module):
     """
-    Symmetric Power Embedding for Linear Transformers.
-    
-    This module implements the symmetric power embedding function for linear transformers.
-    Computes tensor-based embeddings of queries and keys based on tensor symmetry,
-    reducing the dimensionality of the resulting queries and keys.
+    A transform which computes the symmetric tensor power of degree p of an input vector, 
+    combining like terms in the expansion. The output has C(d+p-1, p) terms, where d is 
+    the input dimension.
 
     Args:
         config : a ModelConfig class instance with the configuration
         p : The degree of the symmetric tensor product. Controls the state size.
 
     References:
-        Symmetric Power Transformers. Manifest AI.
+        Manifest AI.
         https://manifestai.com/articles/symmetric-power-transformers/
 
     """
@@ -63,13 +61,13 @@ class SymmetricPowerEmbedding(nn.Module):
         # num_monomials = C(d+p-1, p)
         # indices: num_monomials, p
         indices = list(combinations_with_replacement(range(self.d), self.p))
-        indices_tensor = torch.tensor(indices, dtype=torch.long)
-        self.indices_tensor = indices_tensor  # сохраняем в буфер
+        self.indices_tensor = torch.tensor(indices, dtype=torch.long)
 
         # given a multiindex, counts how many times each index appears
         counts = torch.zeros(len(indices), self.d, dtype=torch.float32)
-        ones = torch.ones_like(indices_tensor, dtype=torch.float32)
         # counts: num_monomials, d
+        ones = torch.ones_like(self.indices_tensor, dtype=torch.float32)
+        # ones: num_monomials, p
         
         # For each monomial (row), adds 1 to counts[m, j] whenever variable j
         # appears in indices_tensor[m]. Records how many times each variable
@@ -103,6 +101,18 @@ class SymmetricPowerEmbedding(nn.Module):
 
 
 class TensorPowerEmbedding(nn.Module):
+    """
+    A transform which computes the full tensor power of degree p of an input vector.
+    The output has d^p terms, where d is the input dimension.
+
+    Args:
+        config : a ModelConfig class instance with the configuration
+        p : The degree of the tensor product. Controls the state size.
+        
+    References:
+        Manifest AI.
+        https://manifestai.com/articles/symmetric-power-transformers/
+    """
     def __init__(self, config, p: int):
         super().__init__()
         self.p = p
@@ -119,6 +129,18 @@ class TensorPowerEmbedding(nn.Module):
 
 
 class Based(nn.Module):
+    """
+    A transform which computes a second-order Taylor expansion embedding of an input vector, 
+    consisting of constant (1), linear, and quadratic terms with appropriate normalization. 
+    The output has 1 + d + d(d+1)/2 terms, where d is the input dimension.
+
+    Args:
+        config : a ModelConfig class instance with the configuration
+    
+    References:
+        Simple Linear Attention Language Models Balance the Recall–Throughput Tradeoff.
+        https://arxiv.org/abs/2402.18668
+    """
     def __init__(self, config):
         super().__init__()
         d = config.hidden_size // config.num_attention_heads
