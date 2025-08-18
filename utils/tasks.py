@@ -94,6 +94,16 @@ class TransformerSequenceClassification:
 
 
 @dataclass
+class TransformerTextClassification:
+    """Task with generic text-like sequences of possibly different lengths
+    which uses information about the lengths."""
+    dataset_type = LRATextDataset
+    model_type = TransformerForSequenceClassification
+    eval_func = eval_classification_task
+    config_type = TransformerConfig
+
+
+@dataclass
 class TransformerSequenceMLM:
     """Task for basic sequence classification which treats all sequences as
     having same length with MLM and classification objectives."""
@@ -311,6 +321,7 @@ TaskRegistry.register_task("transformer_bert_pretraining", TransformerBertPretra
 TaskRegistry.register_task("transformer_bert_mlm", TransformerBertMLM)
 TaskRegistry.register_task("transformer_gpt_pretraining", TransformerGptPretraining)
 TaskRegistry.register_task("transformer_sequence_classification", TransformerSequenceClassification)
+TaskRegistry.register_task("transformer_text_classification", TransformerTextClassification)
 TaskRegistry.register_task("transformer_sequence_mlm", TransformerSequenceMLM)
 TaskRegistry.register_task("glue_with_acc_metrics", GlueWithAccMetrics)
 TaskRegistry.register_task("glue_with_all_metrics", GlueWithAllMetrics)
