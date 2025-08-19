@@ -165,8 +165,10 @@ Transform2Func = {
     "squared_relu": lambda config: lambda x: nn.functional.relu(x) ** 2,
     "1_plus_elu": lambda config: lambda x: 1 + nn.functional.elu(x),
     "sym_power_2": lambda config: SymmetricPowerEmbedding(config, p=2),
+    "sym_power_3": lambda config: SymmetricPowerEmbedding(config, p=2),
     "sym_power_4": lambda config: SymmetricPowerEmbedding(config, p=4),
     "power_2": lambda config: TensorPowerEmbedding(config, p=2),
+    "power_3": lambda config: TensorPowerEmbedding(config, p=3),
     "power_4": lambda config: TensorPowerEmbedding(config, p=4),
     "based": lambda config: Based(config),
 }
