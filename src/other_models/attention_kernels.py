@@ -1,15 +1,10 @@
+import math
 import torch
 import torch.nn as nn
 from torch.nn.attention.flex_attention import create_block_mask, flex_attention
+from itertools import combinations_with_replacement
 from src.positional_embeddings import RelPEBase
 
-Transform2Func = {
-    None: lambda x: x,
-    "identity": lambda  x: x,
-    "elu": nn.functional.elu,
-    "squared_relu": lambda x: nn.functional.relu(x) ** 2,
-    "1_plus_elu": lambda x: 1 + nn.functional.elu(x),
-}
 
 # FlexAttention doesn't work with class-namespace functions to allow dynamic
 # choice of window size as of PyTorch 2.5-2.6.
@@ -36,6 +31,146 @@ w_size_to_func = {
     128: sliding_window_mask_128, 256: sliding_window_mask_256,
     512: sliding_window_mask_512, 1024: sliding_window_mask_1024
 }
+
+
+class SymmetricPowerEmbedding(nn.Module):
+    """
+    A transform which computes the symmetric tensor power of degree p of an input vector, 
+    combining like terms in the expansion. The output has C(d+p-1, p) terms, where d is 
+    the input dimension.
+
+    Args:
+        config : a ModelConfig class instance with the configuration
+        p : The degree of the symmetric tensor product. Controls the state size.
+
+    References:
+        Manifest AI.
+        https://manifestai.com/articles/symmetric-power-transformers/
+
+    """
+    def __init__(self, config, p: int):
+        super().__init__()
+        self.p = p
+        self.d = config.hidden_size // config.num_attention_heads
+        # self.norm_factor = math.pow(self.d, self.p / 4.0)
+        
+        self.register_buffer('indices_tensor', None, persistent=False)
+        self.register_buffer('coeffs', None, persistent=False)
+
+        # generates list of non-decreasing multiindices
+        # num_monomials = C(d+p-1, p)
+        # indices: num_monomials, p
+        indices = list(combinations_with_replacement(range(self.d), self.p))
+        self.indices_tensor = torch.tensor(indices, dtype=torch.long)
+
+        # given a multiindex, counts how many times each index appears
+        counts = torch.zeros(len(indices), self.d, dtype=torch.float32)
+        # counts: num_monomials, d
+        ones = torch.ones_like(self.indices_tensor, dtype=torch.float32)
+        # ones: num_monomials, p
+        
+        # For each monomial (row), adds 1 to counts[m, j] whenever variable j
+        # appears in indices_tensor[m]. Records how many times each variable
+        # occurs in each monomial.
+        counts.scatter_add_(dim=1, index=self.indices_tensor, src=ones)
+
+        # computes multinomial coefficient
+        # lgamma(n+1) = ln(Г(n+1)) = ln(n!)
+        # PyTorch doesn't provide factorial directly, so lgamma is used
+        # coeffs[m] = sqrt(p! / (count_1! * count_2! * ...)) = exp(ln(coeffs[m]))
+        # ln(coeffs[m]) = 0.5*(ln(p!) - (ln(count_1!) + ln(ncount_2!) + ...))
+        log_numerator = math.lgamma(self.p + 1)
+        log_denom = torch.lgamma(counts + 1).sum(dim=1)
+        log_coeffs = 0.5 * (log_numerator - log_denom)
+        
+        # coeffs: num_monomials
+        coeffs = torch.exp(log_coeffs)
+        self.coeffs = coeffs
+
+    def forward(self, x: torch.Tensor):
+        # Computes the product over the last dimension (monomials of degree p)
+        # Select coordinates according to multi-indices
+        # Example: if index=(0,2), we take x[...,0] and x[...,2]
+        selected = x[..., self.indices_tensor]
+        # selected: Batch, ..., SeqLen, num_monomials, p
+        
+        monomials = selected.prod(dim=-1)
+        # monomials: Batch, ..., SeqLen, num_monomials
+
+        return (monomials * self.coeffs)
+
+
+class TensorPowerEmbedding(nn.Module):
+    """
+    A transform which computes the full tensor power of degree p of an input vector.
+    The output has d^p terms, where d is the input dimension.
+
+    Args:
+        config : a ModelConfig class instance with the configuration
+        p : The degree of the tensor product. Controls the state size.
+        
+    References:
+        Manifest AI.
+        https://manifestai.com/articles/symmetric-power-transformers/
+    """
+    def __init__(self, config, p: int):
+        super().__init__()
+        self.p = p
+        # self.norm_factor = math.pow(config.hidden_size // config.num_attention_heads, self.p / 4.0)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        expanded_x = x
+        
+        for _ in range(self.p - 1):
+            x = x.unsqueeze(-2)
+            expanded_x = expanded_x.unsqueeze(-1) * x
+
+        return expanded_x.flatten(start_dim=-self.p)
+
+
+class Based(nn.Module):
+    """
+    A transform which computes a second-order Taylor expansion embedding of an input vector, 
+    consisting of constant (1), linear, and quadratic terms with appropriate normalization. 
+    The output has 1 + d + d(d+1)/2 terms, where d is the input dimension.
+
+    Args:
+        config : a ModelConfig class instance with the configuration
+    
+    References:
+        Simple Linear Attention Language Models Balance the Recall–Throughput Tradeoff.
+        https://arxiv.org/abs/2402.18668
+    """
+    def __init__(self, config):
+        super().__init__()
+        d = config.hidden_size // config.num_attention_heads
+        
+        self.r2 = math.sqrt(2)
+        self.rd = math.sqrt(d)
+        self.rrd = math.sqrt(math.sqrt(d))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x2 = (x.unsqueeze(-1) * x.unsqueeze(-2)).flatten(start_dim=-2) / self.r2
+        
+        term1 = torch.ones_like(x[..., :1])
+        term2 = x / self.rrd
+        term3 = x2 / self.rd
+        
+        return torch.cat([term1, term2, term3], dim=-1)
+
+    
+Transform2Func = {
+    "identity": lambda config: lambda x: x,
+    "elu": lambda config: nn.functional.elu,
+    "squared_relu": lambda config: lambda x: nn.functional.relu(x) ** 2,
+    "1_plus_elu": lambda config: lambda x: 1 + nn.functional.elu(x),
+    "sym_power_2": lambda config: SymmetricPowerEmbedding(config, p=2),
+    "sym_power_4": lambda config: SymmetricPowerEmbedding(config, p=4),
+    "power_2": lambda config: TensorPowerEmbedding(config, p=2),
+    "power_4": lambda config: TensorPowerEmbedding(config, p=4),
+    "based": lambda config: Based(config),
+}
+
 class SoftmaxAttention(nn.Module):
     def __init__(self, config):
         super(SoftmaxAttention, self).__init__()
@@ -86,14 +221,15 @@ class SlidingWindowAttention(nn.Module):
 class LinearAttention(nn.Module):
     def __init__(self, config, eps=1e-6):
         super(LinearAttention, self).__init__()
-        self.feature_map = Transform2Func[config.feature_map]
         self.no_reweight = config.no_reweight
         self.forward_linear = self._forward_linear
         self.forward_quadratic = self._forward_quadratic
         self.eps = eps
         if self.no_reweight:
             self.forward_linear = self._forward_linear_no_norm
-            self.forward_quadratic = self._forward_quadratic_no_norm
+            self.forward_quadratic = self._forward_quadratic_no_norm  
+        transform = Transform2Func[config.feature_map]
+        self.feature_map = transform(config)
         self.apply_relpe_after = config.apply_relpe_after
         self.local = False
 
