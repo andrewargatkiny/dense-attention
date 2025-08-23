@@ -36,7 +36,7 @@ from torch.nn import CrossEntropyLoss
 
 from src.positional_embeddings import PositionalEmbeddingsTypes, SinusoidalPositionalEncoding, RelPETypeToClass, \
     RelPEType
-from .attention_kernels import SoftmaxAttention, LinearAttention, SlidingWindowAttention
+from .attention_kernels import SoftmaxAttention, LinearAttention, SlidingWindowAttention, PowerAttention
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +104,8 @@ class TransformerConfig(object):
                  local_attention=False,
                  window_size=1024,
                  apply_relpe_after=False,
+                 power=2,
+                 scaling_d_factor=False,
                  **kwargs):
         """Constructs ModelConfig.
 
@@ -129,8 +131,20 @@ class TransformerConfig(object):
                 `BertModel`.
             initializer_range: The sttdev of the truncated_normal_initializer for
                 initializing all weight matrices.
-            apply_relpe_after: Whether Relative Positional Encoding (RELPE) is applied after the feature map (if true)
-             or before the linear attention kernel (if false).
+            attention_kernel: Mechanism for attention to use. Currently supported:
+                "softmax", "swa", "linear", "power". Power attention is subtype of
+                linear attention, and many options for linear attention also apply.
+            feature_map: A feature map transform (\phi) for queries and keys in linear
+                attentions.
+            no_reweight: For linear attentions, if set to true, doesn't scale attention
+                scores by their row-wise sums.
+            apply_relpe_after: For linear attentions, determines whether Relative
+                Positional Encoding (RELPE) is applied after the feature map (if true)
+                or before the linear attention kernel (if false).
+            power: For Power Attention, determines the power (p).
+            scaling_d_factor: For Power Attention, determines whether to scale q,k by a
+                predetermined scaling factor depending on d for additional numerical
+                stability.
         """
         if isinstance(vocab_size_or_config_json_file, str):
             with open(vocab_size_or_config_json_file, "r",
@@ -161,6 +175,8 @@ class TransformerConfig(object):
             self.local_attention = local_attention
             self.window_size = window_size
             self.apply_relpe_after = apply_relpe_after
+            self.power = power
+            self.scaling_d_factor = scaling_d_factor
         else:
             raise ValueError(
                 "First argument must be either a vocabulary size (int)"
@@ -289,6 +305,8 @@ class BertSelfAttention(nn.Module):
             self.attention_kernel = SlidingWindowAttention(config)
         elif config.attention_kernel == "linear":
             self.attention_kernel = LinearAttention(config)
+        elif config.attention_kernel == "power":
+            self.attention_kernel = PowerAttention(config)
         else:
             raise NotImplementedError(
                 f"Attention kernel for {config.attention_kernel} is not "
