@@ -4,7 +4,7 @@ import torch.nn as nn
 from torch.nn.attention.flex_attention import create_block_mask, flex_attention
 from itertools import combinations_with_replacement, product
 
-from src.activations import UncenteredFixedLayerNorm, StandardLayerNorm
+from src.activations import Activation2Class
 from src.positional_embeddings import RelPEBase
 
 
@@ -308,6 +308,10 @@ class LinearAttention(nn.Module):
             self.forward_linear = self._forward_linear_no_norm
             self.forward_quadratic = self._forward_quadratic_no_norm
             self.forward_causal = self._forward_causal_no_norm
+        if config.no_reweight_post_norm:
+            d_head = config.hidden_size // config.num_attention_heads
+            self.post_norm = Activation2Class[
+                config.no_reweight_post_norm](d_head)
         transform = Transform2Func[config.feature_map]
         self.feature_map = transform(config)
         self.apply_relpe_after = config.apply_relpe_after
@@ -395,6 +399,8 @@ class LinearAttention(nn.Module):
         # Batch, *, HeadDim, HeadDim
         attention = torch.matmul(queries, context)
         # Batch, *, SeqLen, HeadDim
+        if self.post_norm:
+            attention = self.post_norm(attention)
         return attention
 
     def _forward_quadratic_no_norm(
@@ -406,6 +412,8 @@ class LinearAttention(nn.Module):
         # Batch, *, SeqLen, SeqLen
         attention = torch.matmul(scores, values)
         # Batch, *, SeqLen, HeadDim
+        if self.post_norm:
+            attention = self.post_norm(attention)
         return attention
 
     def _forward_causal(self, queries: torch.Tensor,
@@ -442,6 +450,8 @@ class LinearAttention(nn.Module):
         # Batch, *, SeqLen, SeqLen
         attention = torch.matmul(scores, values)
         # Batch, *, SeqLen, HeadDim
+        if self.post_norm:
+            attention = self.post_norm(attention)
         return attention
 
 
@@ -482,8 +492,6 @@ class PowerAttention(LinearAttention):
         # embeddings in linear mode). Or equivalently, N vs d' + d^p-1.
         self.lin_thr = num_monomials + d ** (self.p - 1)
 
-        if self.no_reweight:
-            self.post_attn_norm = StandardLayerNorm(d)
 
     def forward(self, queries: torch.Tensor,
                 keys: torch.Tensor, values: torch.Tensor,
@@ -510,14 +518,6 @@ class PowerAttention(LinearAttention):
             keys = feature_map(keys)
             return self.forward_linear(queries, keys, values, attn_mask, dropout_p)
 
-    def _forward_linear_no_norm(
-            self, queries: torch.Tensor, keys: torch.Tensor,
-            values: torch.Tensor, attn_mask: torch.Tensor, dropout: float
-    ):
-        attention = super()._forward_linear_no_norm(queries, keys, values,
-                                                    attn_mask, dropout)
-        return self.post_attn_norm(attention)
-
     def _forward_quadratic(self, queries: torch.Tensor,
                            keys: torch.Tensor, values: torch.Tensor,
                            attn_mask: torch.Tensor, dropout: float):
@@ -541,7 +541,9 @@ class PowerAttention(LinearAttention):
         # Batch, *, SeqLen, SeqLen
         attention = torch.matmul(scores, values)
         # Batch, *, SeqLen, HeadDim
-        return self.post_attn_norm(attention)
+        if self.post_norm:
+            attention = self.post_norm(attention)
+        return attention
 
     def _forward_causal(self, queries: torch.Tensor,
                         keys: torch.Tensor, values: torch.Tensor,
@@ -577,5 +579,7 @@ class PowerAttention(LinearAttention):
         # Batch, *, SeqLen, SeqLen
         attention = torch.matmul(scores, values)
         # Batch, *, SeqLen, HeadDim
-        return self.post_attn_norm(attention)
+        if self.post_norm:
+            attention = self.post_norm(attention)
+        return attention
 

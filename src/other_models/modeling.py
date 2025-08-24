@@ -37,6 +37,7 @@ from torch.nn import CrossEntropyLoss
 from src.positional_embeddings import PositionalEmbeddingsTypes, SinusoidalPositionalEncoding, RelPETypeToClass, \
     RelPEType
 from .attention_kernels import SoftmaxAttention, LinearAttention, SlidingWindowAttention, PowerAttention
+from ..activations import Activation2Class
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +91,7 @@ class TransformerConfig(object):
                  attention_kernel="softmax",
                  feature_map=None,
                  no_reweight=False,
+                 no_reweight_post_norm=None,
                  hidden_act="gelu",
                  embedding_dropout=0,
                  hidden_dropout_prob=0.1,
@@ -100,6 +102,8 @@ class TransformerConfig(object):
                  relpe_type=None,
                  type_vocab_size=2,
                  initializer_range=0.02,
+                 pre_attn_ln_type="default",
+                 post_attn_ln_type="default",
                  causal=False,
                  local_attention=False,
                  window_size=1024,
@@ -131,6 +135,9 @@ class TransformerConfig(object):
                 `BertModel`.
             initializer_range: The sttdev of the truncated_normal_initializer for
                 initializing all weight matrices.
+            pre_attn_ln_type: If not set to "default" (which is `BertLayerNorm`),
+                determines the type of layer norm or activation to use before attention.
+            post_attn_ln_type: Like `pre_attn_ln_type` but for usage before FFN.
             attention_kernel: Mechanism for attention to use. Currently supported:
                 "softmax", "swa", "linear", "power". Power attention is subtype of
                 linear attention, and many options for linear attention also apply.
@@ -138,6 +145,9 @@ class TransformerConfig(object):
                 attentions.
             no_reweight: For linear attentions, if set to true, doesn't scale attention
                 scores by their row-wise sums.
+            no_reweight_post_norm: In case of enabled `no_reweight` option in linear
+                attentions, determines whether and which layer norm to use at the end
+                of attention kernel computation. Defaults to None.
             apply_relpe_after: For linear attentions, determines whether Relative
                 Positional Encoding (RELPE) is applied after the feature map (if true)
                 or before the linear attention kernel (if false).
@@ -162,6 +172,7 @@ class TransformerConfig(object):
             self.attention_kernel = attention_kernel
             self.feature_map = feature_map
             self.no_reweight = no_reweight
+            self.no_reweight_post_norm = no_reweight_post_norm
             self.embedding_dropout = embedding_dropout
             self.hidden_dropout_prob = hidden_dropout_prob
             self.attention_probs_dropout_prob = attention_probs_dropout_prob
@@ -171,6 +182,8 @@ class TransformerConfig(object):
             self.relpe_type = relpe_type
             self.type_vocab_size = type_vocab_size
             self.initializer_range = initializer_range
+            self.pre_attn_ln_type = pre_attn_ln_type
+            self.post_attn_ln_type = post_attn_ln_type
             self.causal = causal
             self.local_attention = local_attention
             self.window_size = window_size
@@ -436,8 +449,10 @@ class BertSelfLocalAttention(BertSelfAttention):
         value_layer = self.transpose_for_local_scores(mixed_value_layer, num_windows)
 
         if not self.apply_relpe_after:
-          query_layer = rope_cache.apply_local_relpe2(query_layer, self.window_size, num_windows)
-          key_layer = rope_cache.apply_local_relpe2(key_layer, self.window_size, num_windows)
+            query_layer = rope_cache.apply_local_relpe2(
+                query_layer, self.window_size, num_windows)
+            key_layer = rope_cache.apply_local_relpe2(
+                key_layer, self.window_size, num_windows)
         # Batch, Seq, Head, SubSeqLen, HeadDim
         #if torch.all(attention_mask == 0):
         attention_mask = None
@@ -589,9 +604,15 @@ class BertLayer(nn.Module):
         self.attention = BertAttention(config)
         self.PreAttentionLayerNorm = BertLayerNorm(config.hidden_size,
                                                    eps=1e-12)
+        if config.pre_attn_ln_type != "default":
+            self.PreAttentionLayerNorm = Activation2Class[
+                config.pre_attn_ln_type](config.hidden_size, eps=1e-12)
         #self.MidAttentionLayerNorm = BertLayerNorm(config.hidden_size, eps = 1e-12)
         self.PostAttentionLayerNorm = BertLayerNorm(config.hidden_size,
                                                     eps=1e-12)
+        if config.post_attn_ln_type != "default":
+            self.PostAttentionLayerNorm = Activation2Class[
+                config.post_attn_ln_type](config.hidden_size, eps=1e-12)
         self.intermediate = BertIntermediate(config)
         self.output = BertOutput(config)
         if config.hidden_act == "swiglu":
