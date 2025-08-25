@@ -188,9 +188,15 @@ class TensorPowerEmbedding(nn.Module):
     def __init__(self, config, p: int):
         super().__init__()
         self.p = p
+        if config.scaling_d_factor:
+            self.scaling_d_factor = self.d ** ((-1 + 1/p) / 2)
+        else:
+            self.scaling_d_factor = None
         # self.norm_factor = math.pow(config.hidden_size // config.num_attention_heads, self.p / 4.0)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if self.scaling_d_factor:
+            x *= self.scaling_d_factor
         expanded_x = x
         
         for _ in range(self.p - 1):
