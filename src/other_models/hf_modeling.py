@@ -44,18 +44,27 @@ class HFAdapter(nn.Module):
         self.model = AutoModel.from_config(self.config.hf_config)
         self.PATH_TO_LAYERS = getattr(self.config, "PATH_TO_LAYERS", "model.encoder.layer")
         self.PATH_TO_EMBEDDINGS = getattr(self.config, "PATH_TO_EMBEDDINGS", "model.embeddings")
+        self.NEEDS_TOKEN_TYPE_IDS = getattr(self.config, "NEEDS_TOKEN_TYPE_IDS", True)
+        self.OUTPUT_SIZE = getattr(self.config, "HF_MODEL_OUTPUT_SIZE", self.config.hidden_size)
 
     def forward(self, input_ids, attention_mask=None, token_type_ids=None):
         if token_type_ids is None:
             token_type_ids = torch.zeros_like(input_ids)
         if attention_mask is None:
             attention_mask = torch.ones_like(input_ids)
-        outputs = self.model(
-            input_ids,
-            attention_mask=attention_mask,
-            token_type_ids=token_type_ids,
-            return_dict=True
-        )
+        if self.NEEDS_TOKEN_TYPE_IDS:
+            outputs = self.model(
+                input_ids,
+                attention_mask=attention_mask,
+                token_type_ids=token_type_ids,
+                return_dict=True
+            )
+        else:
+            outputs = self.model(
+                input_ids,
+                attention_mask=attention_mask,
+                return_dict=True
+            )  
         
         # Extract and convert outputs to match the framework's
         sequence_output = outputs.last_hidden_state
@@ -117,7 +126,7 @@ class HFForSequenceClassification(HFPretrainedModel):
         self.PATH_TO_BACKBONE = "backbone"
         self.backbone = HFAdapter(config)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
-        self.classifier = nn.Linear(config.hidden_size, config.num_labels)
+        self.classifier = nn.Linear(self.backbone.OUTPUT_SIZE, config.num_labels)
         self.classifier.apply(self.init_weights)
 
     def forward(self, input_ids, label=None, attention_mask=None, 
@@ -142,7 +151,7 @@ class HFForRegression(HFPretrainedModel):
         self.PATH_TO_BACKBONE = "backbone"
         self.backbone = HFAdapter(config)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
-        self.regressor = nn.Linear(config.hidden_size, 1)
+        self.regressor = nn.Linear(self.backbone.OUTPUT_SIZE, 1)
         self.regressor.apply(self.init_weights)
 
     def forward(self, input_ids, label=None, attention_mask=None,
@@ -169,7 +178,7 @@ class HFForAANMatching(HFPretrainedModel):
         self.dense = nn.Linear(config.hidden_size * 4, config.hidden_size)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.activation = nn.GELU(approximate='tanh')
-        self.classifier = nn.Linear(config.hidden_size, config.num_labels)
+        self.classifier = nn.Linear(self.backbone.OUTPUT_SIZE, config.num_labels)
         self.classifier.apply(self.init_weights)
         self.dense.apply(self.init_weights)
 
