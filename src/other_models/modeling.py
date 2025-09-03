@@ -104,6 +104,7 @@ class TransformerConfig(object):
                  local_attention=False,
                  window_size=1024,
                  apply_relpe_after=False,
+                 local_scheme=None,
                  **kwargs):
         """Constructs ModelConfig.
 
@@ -161,6 +162,7 @@ class TransformerConfig(object):
             self.local_attention = local_attention
             self.window_size = window_size
             self.apply_relpe_after = apply_relpe_after
+            self.local_scheme = local_scheme
         else:
             raise ValueError(
                 "First argument must be either a vocabulary size (int)"
@@ -615,7 +617,20 @@ class BertEncoder(nn.Module):
         self.layer = nn.ModuleList(
             [copy.deepcopy(layer) for _ in range(config.num_hidden_layers)])
 
-        if config.local_attention:
+        # logic for local attention scheme
+        if hasattr(config, 'local_scheme') and config.local_scheme:
+            scheme = config.local_scheme.split('_')
+            code_map = {
+                'g': BertSelfAttention,
+                'l': BertSelfLocalAttention,
+                'sl': BertSelfShiftedLocalAttention
+            }
+            for i, layer in enumerate(self.layer):
+                code = scheme[i % len(scheme)]
+                if code in code_map:
+                    layer.attention.self = code_map[code](config)
+        # fallback to old logic for backward compatibility
+        elif config.local_attention:
             for i, layer in enumerate(self.layer):
                 if i % 3 == 0:
                     layer.attention.self = BertSelfLocalAttention(config)
