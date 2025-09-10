@@ -227,20 +227,17 @@ class LinearAttention(nn.Module):
         self.forward_linear = self._forward_linear
         self.forward_quadratic = self._forward_quadratic
         self.eps = eps
-        self.window_size = config.window_size
         if self.no_reweight:
             self.forward_linear = self._forward_linear_no_norm
             self.forward_quadratic = self._forward_quadratic_no_norm  
         transform = Transform2Func[config.feature_map]
         self.feature_map = transform(config)
         self.apply_relpe_after = config.apply_relpe_after
-        self.local = False
 
     def forward(self, queries: torch.Tensor,
                 keys: torch.Tensor, values: torch.Tensor,
                 attn_mask: torch.Tensor, dropout_p: float, causal: bool, rope_cache: RelPEBase):
         # TODO: implement causal linear attention
-        num_windows = queries.shape[1] // self.window_size
         queries = self.feature_map(queries)
         queries = nn.functional.dropout(queries,p=dropout_p)
         keys = self.feature_map(keys)
@@ -248,10 +245,6 @@ class LinearAttention(nn.Module):
         shape = queries.shape
         n, d = shape[-2], shape[-1]
         if self.apply_relpe_after:
-          if self.local:
-            queries = rope_cache.apply_local_relpe2(queries, self.window_size, num_windows)
-            keys = rope_cache.apply_local_relpe2(keys, self.window_size, num_windows)
-          else:
             queries = rope_cache.apply_relpe(queries)
             keys = rope_cache.apply_relpe(keys)
 
@@ -260,8 +253,6 @@ class LinearAttention(nn.Module):
         else:
             return self.forward_linear(queries, keys, values, attn_mask, dropout_p)
 
-    def set_local_relpe_state(self, use_local=True):
-        self.local = use_local
 
     def _forward_linear(self, queries: torch.Tensor,
                         keys: torch.Tensor, values: torch.Tensor,
