@@ -233,7 +233,6 @@ class LinearAttention(nn.Module):
         transform = Transform2Func[config.feature_map]
         self.feature_map = transform(config)
         self.apply_relpe_after = config.apply_relpe_after
-        self.local = False
 
     def forward(self, queries: torch.Tensor,
                 keys: torch.Tensor, values: torch.Tensor,
@@ -246,10 +245,6 @@ class LinearAttention(nn.Module):
         shape = queries.shape
         n, d = shape[-2], shape[-1]
         if self.apply_relpe_after:
-          if self.local:
-            queries = rope_cache.apply_local_relpe2(queries)
-            keys = rope_cache.apply_local_relpe2(keys)
-          else:
             queries = rope_cache.apply_relpe(queries)
             keys = rope_cache.apply_relpe(keys)
 
@@ -258,8 +253,6 @@ class LinearAttention(nn.Module):
         else:
             return self.forward_linear(queries, keys, values, attn_mask, dropout_p)
 
-    def set_local_relpe_state(self, use_local=True):
-        local = use_local
 
     def _forward_linear(self, queries: torch.Tensor,
                         keys: torch.Tensor, values: torch.Tensor,
@@ -314,4 +307,3 @@ class LinearAttention(nn.Module):
         attention = torch.matmul(scores, values)
         # Batch, *, SeqLen, HeadDim
         return attention
-
