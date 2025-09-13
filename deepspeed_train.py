@@ -526,29 +526,21 @@ def report_model_weights(args, model, step, bins=20):
         layers = attrgetter(backbone.PATH_TO_LAYERS)(backbone)
         embeddings = attrgetter(backbone.PATH_TO_EMBEDDINGS)(backbone)
 
-        """
-        Get the full attribute path (in terms of the `model` object) for a 
-        parameter that belongs to either the layers or embeddings group of 
-        parameters by adding the corresponding prefix.
-        """
-        full_path = lambda name, is_layer=True: '.'.join(["module",
-            model.PATH_TO_BACKBONE,
-            (backbone.PATH_TO_LAYERS if is_layer else backbone.PATH_TO_EMBEDDINGS),
-            name])
         embeddings_params = {
-            full_path(name, is_layer=False): ('Embedding parameters', name)
+            param: ('Embedding parameters', name)
             for name, param in
             embeddings.named_parameters()
         }
         layers_params = {
-            full_path(name): ('.'.join(name.split(".")[1:]),
+            param: ('.'.join(name.split(".")[1:]),
                               f'Layer {name.split(".")[0]}')
             for name, param in layers.named_parameters()
         }
         """
         Example dictionary entry:
         {
-            'module.backbone.model.encoder.layer.4.intermediate.dense.weight': 
+            tensor([[..]], device='cuda:0', dtype=torch.float16,
+            requires_grad=True): 
                 ('intermediate.dense.weight', 'Layer 4'), 
             ...
         }
@@ -559,7 +551,7 @@ def report_model_weights(args, model, step, bins=20):
             p = param.detach().cpu().float()
             if args.log_weight_norms: 
                 norm = torch.norm(p, p=norm_types[args.logging_norm_type]).item()
-                group_name, identifier = params.get(name, ('Other parameters', name))
+                group_name, identifier = params.get(param, ('Other parameters', name))
                 args.tracker_logger.report_scalar(
                     title=f':{args.logging_norm_type} Norm/ {group_name}',
                     series=identifier,
