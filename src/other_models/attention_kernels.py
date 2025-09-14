@@ -478,7 +478,7 @@ class PowerAttention(LinearAttention):
         if self.p < 2 or self.p > 4 or not isinstance(self.p, int):
             raise ValueError(f"Integer powers greater than 1 are currently "
                              f"supported, but you provided {self.p}.")
-        self.feature_map_train = SymPowFastTraining(config, self.p)
+        self.feature_map_train = TensorPowerEmbedding(config, self.p)
         self.feature_map_infer = SymmetricPowerEmbedding(config, self.p)
         self.feature_map = None
         d = config.hidden_size // config.num_attention_heads
