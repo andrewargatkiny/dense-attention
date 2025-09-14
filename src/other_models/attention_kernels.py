@@ -243,7 +243,7 @@ Transform2Func = {
     "squared_relu": lambda config: lambda x: nn.functional.relu(x) ** 2,
     "1_plus_elu": lambda config: lambda x: 1 + nn.functional.elu(x),
     "sym_power_2": lambda config: SymmetricPowerEmbedding(config, p=2),
-    "sym_power_3": lambda config: SymmetricPowerEmbedding(config, p=2),
+    "sym_power_3": lambda config: SymmetricPowerEmbedding(config, p=3),
     "sym_power_4": lambda config: SymmetricPowerEmbedding(config, p=4),
     "sympow_train_2": lambda config: SymPowFastTraining(config, p=2),
     "sympow_train_3": lambda config: SymPowFastTraining(config, p=3),
@@ -321,7 +321,6 @@ class LinearAttention(nn.Module):
         transform = Transform2Func[config.feature_map]
         self.feature_map = transform(config)
         self.apply_relpe_after = config.apply_relpe_after
-        self.local = False
 
         self.seq_len = None
         self.causal_mask = None
@@ -338,10 +337,6 @@ class LinearAttention(nn.Module):
         shape = queries.shape
         n, d = shape[-2], shape[-1]
         if self.apply_relpe_after:
-          if self.local:
-            queries = rope_cache.apply_local_relpe2(queries)
-            keys = rope_cache.apply_local_relpe2(keys)
-          else:
             queries = rope_cache.apply_relpe(queries)
             keys = rope_cache.apply_relpe(keys)
         if causal:
@@ -351,8 +346,6 @@ class LinearAttention(nn.Module):
         else:
             return self.forward_linear(queries, keys, values, attn_mask, dropout_p)
 
-    def set_local_relpe_state(self, use_local=True):
-        local = use_local
 
     def _causal_mask(self, scores: torch.Tensor):
         n = scores.shape[-1]
