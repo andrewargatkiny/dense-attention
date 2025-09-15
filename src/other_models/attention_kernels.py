@@ -96,7 +96,7 @@ class SymmetricPowerEmbedding(nn.Module):
     def forward(self, x: torch.Tensor):
         # Create a tensor of the final flattened form and, for each of p factors,
         # multiply it with relevant x_{indices_i} values, i \in [0, ..., p-1].
-        result = torch.ones(size=x.size()[:-1] + [self.num_monomials],
+        result = torch.ones(size=x.size()[:-1] + (self.num_monomials,),
                             dtype=x.dtype, device=x.device)
 
         for i in range(self.p):
@@ -188,6 +188,7 @@ class TensorPowerEmbedding(nn.Module):
     def __init__(self, config, p: int):
         super().__init__()
         self.p = p
+        self.d = config.hidden_size // config.num_attention_heads
         if config.scaling_d_factor:
             self.scaling_d_factor = self.d ** ((-1 + 1/p) / 2)
         else:
@@ -314,6 +315,7 @@ class LinearAttention(nn.Module):
             self.forward_linear = self._forward_linear_no_norm
             self.forward_quadratic = self._forward_quadratic_no_norm
             self.forward_causal = self._forward_causal_no_norm
+        self.post_norm = False
         if config.no_reweight_post_norm:
             d_head = config.hidden_size // config.num_attention_heads
             self.post_norm = Activation2Class[
@@ -473,9 +475,10 @@ class PowerAttention(LinearAttention):
 
     """
     def __init__(self, config, eps=1e-6):
+        config.feature_map = "identity"  # for smooth parent class init
         super(PowerAttention, self).__init__(config, eps)
         self.p = config.power
-        if self.p < 2 or self.p > 4 or not isinstance(self.p, int):
+        if self.p < 2 or not isinstance(self.p, int):
             raise ValueError(f"Integer powers greater than 1 are currently "
                              f"supported, but you provided {self.p}.")
         self.feature_map_train = TensorPowerEmbedding(config, self.p)
