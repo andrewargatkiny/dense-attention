@@ -165,6 +165,45 @@ class RoPE(RelPEBase):
         x = x * cache_cos + self.rotate_half(x) * cache_sin
         return x.to(pdtype)
 
+
+class RoPE_EW(RelPEBase):
+    def __init__(self, seq_len: int, n_elem: int,
+                 base: int = 10000, num_heads=None):
+        super(RoPE_EW, self).__init__()
+        n_elem=16
+        # $\Theta = {\theta_i = 10000^{\frac{2(i-1)}{d}}, i \in [1, 2, ..., \frac{d}{2}]}$
+        theta = 1.0 / (base ** (torch.arange(0, n_elem, 2) / n_elem))
+
+        # Create position indexes `[0, 1, ..., seq_len - 1]`
+        seq_idx = torch.arange(seq_len)
+
+        # Calculate the product of position index and $\theta_i$
+        angles = torch.outer(seq_idx, theta).float()
+
+        cache_cos = torch.cos(angles).unsqueeze(0)
+        cache_sin = torch.sin(angles).unsqueeze(0)
+        cache = torch.cat([cache_cos, cache_sin], dim=-1)
+        if num_heads is None:
+            cache = cache.unsqueeze(1).unsqueeze(-2)
+            # cache: bs (1), headdim (1), seqlen, embed dim (1), cache
+        else:
+            cache = cache.unsqueeze(-2)
+            # cache: bs (1), seqlen, embed dim (1), cache
+        self.register_buffer("cache", cache, persistent=False)
+
+    def apply_relpe(self, x: torch.Tensor) -> torch.Tensor:
+        seq_len = x.size(-2)
+        cache = self.cache[..., :seq_len, :, :]
+        x = x.unsqueeze(-1) * cache
+        x = x.flatten(-2)
+        return x
+
+    def apply_local_relpe(self, x: torch.Tensor, window_size, num_windows):
+        return x
+
+    def apply_local_relpe2(self, x: torch.Tensor, window_size, num_windows):
+        return x
+
 class TrigRelPEBase(RelPEBase):
     """Use num_heads=None if you intend to apply RelPE to tensors which
     already have material head dimension. If all heads are implicitly

@@ -1,0 +1,56 @@
+{
+    "name": "linear_transformer",
+    "model_config": {
+        "vocab_size_or_config_json_file": 264,
+        "hidden_size": 128,
+        "num_hidden_layers": 6,
+        "num_attention_heads": 8,
+        "intermediate_size": 512,
+        "hidden_dropout_prob": 0.05,
+        "attention_probs_dropout_prob": 0,
+        "embedding_dropout": 0,
+        "max_position_embeddings": 1024,
+        "attn_proj_biases": false,
+        "pos_emb_type": "relpe",
+        "relpe_type": "rope",
+        "attention_kernel": "power",
+        "no_reweight": true,
+        "no_reweight_post_norm": "standard_ln",
+        "type_vocab_size": 2,
+        "initializer_range": 0.2,
+        "window_size": 128,
+        "local_attention": false,
+        "apply_relpe_after": false,
+        "power": 3,
+        "scaling_d_factor": true
+    },
+    "data": {
+        "training": {
+            "inputs": "input/train.src",
+            "labels": "label/train.label"
+        },
+        "validation": {
+            "inputs": "input/valid.src",
+            "labels": "label/valid.label"
+        },
+        "test": {
+            "inputs": "input/test.src",
+            "labels": "label/test.label"
+        }
+    },
+    "training": {
+        "num_epochs": 210,
+        "lr_scheduler_params": {
+            "warmup_ratio": 0.1,
+            "warmup_degree": 1,
+            "degree": 0,
+            "one_cycle_steps": 320000
+        },
+        "lr_schedule": "cosine",
+        "lr_offset": 0.0,
+        "warmup_proportion": 0.02,
+        "learning_rate": 1e-3,
+        "weight_decay": 0.1,
+        "num_workers": 4
+    }
+}

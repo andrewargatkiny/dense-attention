@@ -1,0 +1,88 @@
+{
+    "name": "llama",
+    "model_config": {
+        "vocab_size_or_config_json_file": 32000,
+        "hidden_size": 1024,
+        "num_hidden_layers": 24,
+        "num_attention_heads": 16,
+        "intermediate_size": 4096,
+        "hidden_dropout_prob": 0,
+        "hidden_act": "swiglu",
+        "attention_kernel": "power",
+        "attention_probs_dropout_prob": 0,
+        "embedding_dropout": 0,
+        "max_position_embeddings": 4096,
+        "token_type_embeddings": false,
+        "type_vocab_size": 2,
+        "initializer_range": 0.02,
+        "pos_emb_type": "relpe",
+        "relpe_type": "rope",
+        "causal": true,
+        "local_attention": false,
+        "power": 3,
+        "no_reweight": true,
+        "no_reweight_post_norm": "standard_ln",
+        "scaling_d_factor": true,
+
+    },
+    "data": {
+        "training": {
+            "hf_sources": [
+                {
+                    "name": "HuggingFaceFW/fineweb-edu",
+                    "subset": "sample-100BT",
+                    "split": "train",
+                    "chunk_size": 600000
+                }
+            ],
+            "total_samples": 131072,
+            "max_seq_length": 4096,
+            "tokenizer_name": "huggyllama/llama-7b",
+            "pad_samples": false
+        },
+        "validation": {
+            "hf_sources": [
+                {
+                    "name": "EleutherAI/wikitext_document_level",
+                    "subset": "wikitext-2-raw-v1",
+                    "split": "test",
+                    "offset": 0,
+                    "chunk_size": 62
+                }
+            ],
+            "total_samples": 81,
+            "max_seq_length": 4096,
+            "tokenizer_name": "huggyllama/llama-7b",
+            "pad_samples": false
+        },
+        "test": {
+            "hf_sources": [
+                {
+                    "name": "HuggingFaceFW/fineweb-edu",
+                    "subset": null,
+                    "split": "train",
+                    "offset": 10000,
+                    "chunk_size": 75000
+                }
+            ],
+            "total_samples": 16384,
+            "max_seq_length": 4096,
+            "tokenizer_name": "huggyllama/llama-7b",
+            "pad_samples": false
+        }
+    },
+    "training": {
+        "num_epochs": 14,
+        "lr_scheduler_params": {
+            "warmup_ratio": 0.015,
+            "max_lr": 4e-4,
+            "min_lr": 0.00005,
+            "one_cycle_steps": 28672
+        },
+        "lr_schedule": "true_cosine",
+        "lr_offset": 0,
+        "learning_rate": 4e-4,
+        "weight_decay": 0.1,
+        "num_workers": 4
+    }
+}

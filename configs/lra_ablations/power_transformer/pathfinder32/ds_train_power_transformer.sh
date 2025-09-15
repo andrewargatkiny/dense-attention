@@ -1,21 +1,20 @@
 #!/bin/bash
 
 base_dir=`pwd`
-: "${BASE_OUT_DIR:=${base_dir}}"
-OUTPUT_DIR=${BASE_OUT_DIR}/bert_model_dense_attn_adam_outputs
-BASE_JOB_NAME="gpt_pretraining"
-
-SEED=${SEED:-42}
-#NODE=${NODE:-0}
+SEED=${SEED:-100}
+NODE=${NODE:-0}
 MASTER_PORT=${MASTER_PORT:-29500}
-CONFIG=${CONFIG:-${base_dir}/configs/gpt/llama_power_3.json}
-DS_CONFIG=${DS_CONFIG:-${base_dir}/configs/gpt/deepspeed_transformer_4k.json}
-
-MODEL_CONFIG=${MODEL_CONFIG:-"$CONFIG"}
-DATA_CONFIG=${DATA_CONFIG:-"$CONFIG"}
-TRAINING_CONFIG=${TRAINING_CONFIG:-"$CONFIG"}
-TASK_TYPE=${TASK_TYPE:-"transformer_gpt_pretraining"}
+CONFIG=${CONFIG:-${base_dir}/configs/lra_ablations/power_transformer/pathfinder32/linear_attn_base.json}
+DS_CONFIG=${DS_CONFIG:-${base_dir}/configs/lra_ablations/power_transformer/pathfinder32/deepspeed_config.json}
 TRACKING_SYSTEM=${TRACKING_SYSTEM:-clearml}
+
+OUTPUT_DIR=${base_dir}/bert_model_dense_attn_adam_outputs
+BASE_JOB_NAME="lra_pathfinder_32"
+
+# Default values
+: "${BASE_DATA_DIR:=${base_dir}/data}"
+CHECKPOINT_BASE_PATH=""
+CHECKPOINT_EPOCH_NAME=""
 
 JOB_NAME_SUFFIX=${JOB_NAME_SUFFIX-"_$(date +'%Y-%m-%d_%H-%M')"}
 OVERRIDE_ARGS=()
@@ -62,34 +61,33 @@ if [ "${1-}" = "--override" ]; then
   OVERRIDE_ARGS=( "${@:2}" )
 fi
 
-
 mkdir -p $OUTPUT_DIR
 
-NCCL_TREE_THRESHOLD=0 deepspeed --master_port "$MASTER_PORT" ${base_dir}/deepspeed_train.py \
+NCCL_TREE_THRESHOLD=0 deepspeed --include localhost:"$NODE" --master_port "$MASTER_PORT" ${base_dir}/deepspeed_train.py \
 --cf "$CONFIG" \
---model_config_file "$MODEL_CONFIG" \
---data_config_file "$DATA_CONFIG" \
---train_config_file "$TRAINING_CONFIG" \
+--max_seq_length 1024 \
 --output_dir $OUTPUT_DIR \
---task_type "$TASK_TYPE" \
---use_sharded_dataset \
 --deepspeed \
---only_mlm_task \
+--task_type "transformer_sequence_classification" \
 --use_torch_compile \
+--eval_train_data \
 --eval_test_data \
+--max_validation_samples 20000 \
+--log_diagnostic_freq 20 \
 --log_weight_norms \
---log_diagnostic_freq 5 \
---ckpt_to_save 1 \
---keep_last_ckpts 1 \
---keep_ckpt_epochs "14" \
+--log_activations \
+--tracking_system "$TRACKING_SYSTEM" \
 --seed "$SEED" \
 --job_name $JOB_NAME \
 --deepspeed_config "$DS_CONFIG" \
---data_path_prefix "${BASE_DATA_DIR}/bert_mlm/" \
+--data_path_prefix "${BASE_DATA_DIR}/lra/pathfinder32/" \
 --eval_bs_ratio 2 \
---inputs_logging_ratio 0.2 \
+--inputs_logging_ratio 0.1 \
 --load_training_checkpoint $CHECKPOINT_BASE_PATH \
 --load_checkpoint_id $CHECKPOINT_EPOCH_NAME \
---project_name "gpt_pretraining" \
+--keep_last_ckpts 3 \
+--ckpt_to_save 1 \
+--load_only_weights \
+--project_name "lra-pathfinder-32" \
 --override ${OVERRIDE_ARGS[@]} \
 &> ${JOB_NAME}.log
