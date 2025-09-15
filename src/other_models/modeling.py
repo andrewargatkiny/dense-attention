@@ -309,9 +309,9 @@ class BertSelfAttention(nn.Module):
                 "The hidden size (%d) is not a multiple of the number of attention "
                 "heads (%d)" %
                 (config.hidden_size, config.num_attention_heads))
-        if config.attention_kernel not in ["softmax", "linear", "swa"]:
+        if config.attention_kernel not in ["softmax", "linear", "swa", "power"]:
             raise ValueError("Attention kernel param should hold value of "
-                             "either 'softmax' or 'linear' or 'swa'.")
+                             "either 'softmax' or 'linear' or 'swa' or 'power'.")
         if config.attention_kernel == "softmax":
             self.attention_kernel = SoftmaxAttention(config)
         elif config.attention_kernel == "swa":
