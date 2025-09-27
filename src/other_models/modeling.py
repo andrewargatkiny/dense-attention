@@ -132,6 +132,11 @@ class TransformerConfig(object):
                 initializing all weight matrices.
             apply_relpe_after: Whether Relative Positional Encoding (RELPE) is applied after the feature map (if true)
              or before the linear attention kernel (if false).
+            local_scheme: Scheme to form patterns of local and global attention
+                layers. Should contain lowercase-letter layer codes separated
+                by underscore '_'. Available codes: 'l' (local attention), 'sl'
+                (shifted local), 'swa' (sliding window), and 'g' (global).
+                If None, `local_attention` flag is used with a hardcoded scheme.
         """
         if isinstance(vocab_size_or_config_json_file, str):
             with open(vocab_size_or_config_json_file, "r",
@@ -620,15 +625,23 @@ class BertEncoder(nn.Module):
         # logic for local attention scheme
         if hasattr(config, 'local_scheme') and config.local_scheme:
             scheme = config.local_scheme.split('_')
-            code_map = {
-                'g': BertSelfAttention,
-                'l': BertSelfLocalAttention,
-                'sl': BertSelfShiftedLocalAttention
-            }
-            for i, layer in enumerate(self.layer):
+            valid_codes = {'g', 'l', 'sl', 'swa'}
+            for code in scheme:
+                if code not in valid_codes:
+                    raise ValueError(f"Unknown attention type code '{code}' in local_scheme. "
+                                     f"Valid codes are: {sorted(list(valid_codes))}")
+
+            for i, layer_module in enumerate(self.layer):
                 code = scheme[i % len(scheme)]
-                if code in code_map:
-                    layer.attention.self = code_map[code](config)
+                if code == 'l':
+                    layer_module.attention.self = BertSelfLocalAttention(config)
+                elif code == 'sl':
+                    layer_module.attention.self = BertSelfShiftedLocalAttention(config)
+                elif code == 'swa':
+                    layer_config = copy.deepcopy(config)
+                    layer_config.attention_kernel = "swa"
+                    layer_module.attention.self = BertSelfAttention(layer_config)
+                # 'g' is the default and requires no change, so we just pass.
         # fallback to old logic for backward compatibility
         elif config.local_attention:
             for i, layer in enumerate(self.layer):
