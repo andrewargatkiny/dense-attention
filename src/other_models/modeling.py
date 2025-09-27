@@ -36,7 +36,8 @@ from torch.nn import CrossEntropyLoss
 
 from src.positional_embeddings import PositionalEmbeddingsTypes, SinusoidalPositionalEncoding, RelPETypeToClass, \
     RelPEType
-from .attention_kernels import SoftmaxAttention, LinearAttention, SlidingWindowAttention
+from .attention_kernels import SoftmaxAttention, LinearAttention, SlidingWindowAttention, PowerAttention
+from ..activations import Activation2Class
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +91,7 @@ class TransformerConfig(object):
                  attention_kernel="softmax",
                  feature_map=None,
                  no_reweight=False,
+                 no_reweight_post_norm=None,
                  hidden_act="gelu",
                  embedding_dropout=0,
                  hidden_dropout_prob=0.1,
@@ -100,11 +102,15 @@ class TransformerConfig(object):
                  relpe_type=None,
                  type_vocab_size=2,
                  initializer_range=0.02,
+                 pre_attn_ln_type="default",
+                 post_attn_ln_type="default",
                  causal=False,
                  local_attention=False,
                  window_size=1024,
                  apply_relpe_after=False,
                  local_scheme=None,
+                 power=2,
+                 scaling_d_factor=False,
                  **kwargs):
         """Constructs ModelConfig.
 
@@ -137,6 +143,26 @@ class TransformerConfig(object):
                 by underscore '_'. Available codes: 'l' (local attention), 'sl'
                 (shifted local), 'swa' (sliding window), and 'g' (global).
                 If None, `local_attention` flag is used with a hardcoded scheme.
+            pre_attn_ln_type: If not set to "default" (which is `BertLayerNorm`),
+                determines the type of layer norm or activation to use before attention.
+            post_attn_ln_type: Like `pre_attn_ln_type` but for usage before FFN.
+            attention_kernel: Mechanism for attention to use. Currently supported:
+                "softmax", "swa", "linear", "power". Power attention is subtype of
+                linear attention, and many options for linear attention also apply.
+            feature_map: A feature map transform (\phi) for queries and keys in linear
+                attentions.
+            no_reweight: For linear attentions, if set to true, doesn't scale attention
+                scores by their row-wise sums.
+            no_reweight_post_norm: In case of enabled `no_reweight` option in linear
+                attentions, determines whether and which layer norm to use at the end
+                of attention kernel computation. Defaults to None.
+            apply_relpe_after: For linear attentions, determines whether Relative
+                Positional Encoding (RELPE) is applied after the feature map (if true)
+                or before the linear attention kernel (if false).
+            power: For Power Attention, determines the power (p).
+            scaling_d_factor: For Power Attention, determines whether to scale q,k by a
+                predetermined scaling factor depending on d for additional numerical
+                stability.
         """
         if isinstance(vocab_size_or_config_json_file, str):
             with open(vocab_size_or_config_json_file, "r",
@@ -154,6 +180,7 @@ class TransformerConfig(object):
             self.attention_kernel = attention_kernel
             self.feature_map = feature_map
             self.no_reweight = no_reweight
+            self.no_reweight_post_norm = no_reweight_post_norm
             self.embedding_dropout = embedding_dropout
             self.hidden_dropout_prob = hidden_dropout_prob
             self.attention_probs_dropout_prob = attention_probs_dropout_prob
@@ -163,11 +190,15 @@ class TransformerConfig(object):
             self.relpe_type = relpe_type
             self.type_vocab_size = type_vocab_size
             self.initializer_range = initializer_range
+            self.pre_attn_ln_type = pre_attn_ln_type
+            self.post_attn_ln_type = post_attn_ln_type
             self.causal = causal
             self.local_attention = local_attention
             self.window_size = window_size
             self.apply_relpe_after = apply_relpe_after
             self.local_scheme = local_scheme
+            self.power = power
+            self.scaling_d_factor = scaling_d_factor
         else:
             raise ValueError(
                 "First argument must be either a vocabulary size (int)"
@@ -287,15 +318,17 @@ class BertSelfAttention(nn.Module):
                 "The hidden size (%d) is not a multiple of the number of attention "
                 "heads (%d)" %
                 (config.hidden_size, config.num_attention_heads))
-        if config.attention_kernel not in ["softmax", "linear", "swa"]:
+        if config.attention_kernel not in ["softmax", "linear", "swa", "power"]:
             raise ValueError("Attention kernel param should hold value of "
-                             "either 'softmax' or 'linear' or 'swa'.")
+                             "either 'softmax' or 'linear' or 'swa' or 'power'.")
         if config.attention_kernel == "softmax":
             self.attention_kernel = SoftmaxAttention(config)
         elif config.attention_kernel == "swa":
             self.attention_kernel = SlidingWindowAttention(config)
         elif config.attention_kernel == "linear":
             self.attention_kernel = LinearAttention(config)
+        elif config.attention_kernel == "power":
+            self.attention_kernel = PowerAttention(config)
         else:
             raise NotImplementedError(
                 f"Attention kernel for {config.attention_kernel} is not "
@@ -378,9 +411,6 @@ class BertSelfAttention(nn.Module):
 class BertSelfLocalAttention(BertSelfAttention):
     def __init__(self, config):
         super(BertSelfLocalAttention, self).__init__(config)
-        if config.attention_kernel == "linear":
-            self.attention_kernel.set_local_relpe_state(use_local=True)
-
         self.window_size = config.window_size
         assert config.max_position_embeddings % self.window_size == 0
 
@@ -425,8 +455,10 @@ class BertSelfLocalAttention(BertSelfAttention):
         value_layer = self.transpose_for_local_scores(mixed_value_layer, num_windows)
 
         if not self.apply_relpe_after:
-          query_layer = rope_cache.apply_local_relpe2(query_layer, self.window_size, num_windows)
-          key_layer = rope_cache.apply_local_relpe2(key_layer, self.window_size, num_windows)
+            query_layer = rope_cache.apply_local_relpe2(
+                query_layer, self.window_size, num_windows)
+            key_layer = rope_cache.apply_local_relpe2(
+                key_layer, self.window_size, num_windows)
         # Batch, Seq, Head, SubSeqLen, HeadDim
         #if torch.all(attention_mask == 0):
         attention_mask = None
@@ -578,9 +610,15 @@ class BertLayer(nn.Module):
         self.attention = BertAttention(config)
         self.PreAttentionLayerNorm = BertLayerNorm(config.hidden_size,
                                                    eps=1e-12)
+        if config.pre_attn_ln_type != "default":
+            self.PreAttentionLayerNorm = Activation2Class[
+                config.pre_attn_ln_type](config.hidden_size, eps=1e-12)
         #self.MidAttentionLayerNorm = BertLayerNorm(config.hidden_size, eps = 1e-12)
         self.PostAttentionLayerNorm = BertLayerNorm(config.hidden_size,
                                                     eps=1e-12)
+        if config.post_attn_ln_type != "default":
+            self.PostAttentionLayerNorm = Activation2Class[
+                config.post_attn_ln_type](config.hidden_size, eps=1e-12)
         self.intermediate = BertIntermediate(config)
         self.output = BertOutput(config)
         if config.hidden_act == "swiglu":
