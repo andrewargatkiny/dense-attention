@@ -108,6 +108,7 @@ class TransformerConfig(object):
                  local_attention=False,
                  window_size=1024,
                  apply_relpe_after=False,
+                 local_scheme=None,
                  power=2,
                  scaling_d_factor=False,
                  **kwargs):
@@ -135,6 +136,13 @@ class TransformerConfig(object):
                 `BertModel`.
             initializer_range: The sttdev of the truncated_normal_initializer for
                 initializing all weight matrices.
+            apply_relpe_after: Whether Relative Positional Encoding (RELPE) is applied after the feature map (if true)
+             or before the linear attention kernel (if false).
+            local_scheme: Scheme to form patterns of local and global attention
+                layers. Should contain lowercase-letter layer codes separated
+                by underscore '_'. Available codes: 'l' (local attention), 'sl'
+                (shifted local), 'swa' (sliding window), and 'g' (global).
+                If None, `local_attention` flag is used with a hardcoded scheme.
             pre_attn_ln_type: If not set to "default" (which is `BertLayerNorm`),
                 determines the type of layer norm or activation to use before attention.
             post_attn_ln_type: Like `pre_attn_ln_type` but for usage before FFN.
@@ -188,6 +196,7 @@ class TransformerConfig(object):
             self.local_attention = local_attention
             self.window_size = window_size
             self.apply_relpe_after = apply_relpe_after
+            self.local_scheme = local_scheme
             self.power = power
             self.scaling_d_factor = scaling_d_factor
         else:
@@ -651,7 +660,28 @@ class BertEncoder(nn.Module):
         self.layer = nn.ModuleList(
             [copy.deepcopy(layer) for _ in range(config.num_hidden_layers)])
 
-        if config.local_attention:
+        # logic for local attention scheme
+        if hasattr(config, 'local_scheme') and config.local_scheme:
+            scheme = config.local_scheme.split('_')
+            valid_codes = {'g', 'l', 'sl', 'swa'}
+            for code in scheme:
+                if code not in valid_codes:
+                    raise ValueError(f"Unknown attention type code '{code}' in local_scheme. "
+                                     f"Valid codes are: {sorted(list(valid_codes))}")
+
+            for i, layer_module in enumerate(self.layer):
+                code = scheme[i % len(scheme)]
+                if code == 'l':
+                    layer_module.attention.self = BertSelfLocalAttention(config)
+                elif code == 'sl':
+                    layer_module.attention.self = BertSelfShiftedLocalAttention(config)
+                elif code == 'swa':
+                    layer_config = copy.deepcopy(config)
+                    layer_config.attention_kernel = "swa"
+                    layer_module.attention.self = BertSelfAttention(layer_config)
+                # 'g' is the default and requires no change, so we just pass.
+        # fallback to old logic for backward compatibility
+        elif config.local_attention:
             for i, layer in enumerate(self.layer):
                 if i % 3 == 0:
                     layer.attention.self = BertSelfLocalAttention(config)
