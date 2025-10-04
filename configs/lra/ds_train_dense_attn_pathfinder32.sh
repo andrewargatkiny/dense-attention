@@ -11,6 +11,18 @@ TRACKING_SYSTEM=${TRACKING_SYSTEM:-clearml}
 OUTPUT_DIR=${base_dir}/bert_model_dense_attn_adam_outputs
 BASE_JOB_NAME="lra_pathfinder_32"
 
+REUSE_JOB_NAME=false
+new_args=()
+for arg in "$@"; do
+  if [ "$arg" != "--reuse_job_name" ]; then
+    new_args+=("$arg")
+  else
+    REUSE_JOB_NAME=true
+  fi
+done
+set -- "${new_args[@]}"
+
+
 # Default values
 : "${BASE_DATA_DIR:=${base_dir}/data}"
 CHECKPOINT_BASE_PATH=""
@@ -34,20 +46,20 @@ if [ "${1-}" = "--resume" ]; then
   [ $# -ge 1 ] || {
     echo "Usage: $0 --resume [EPOCH|last] JOB_NAME"
     echo "   or: $0 --resume [EPOCH|last] JOB_NAME --override cf.key=value ds.key=value ..."
-    echo ""
-    echo "Environment variables:"
-    echo "  JOB_NAME_SUFFIX     Suffix to append to job name (default: timestamp)"
-    echo "                      Set to empty string to disable: JOB_NAME_SUFFIX='' $0 ..."
+    echo "Options:"
+    echo "  --reuse_job_name    Reuse the original job name instead of adding timestamp suffix"
+    echo "                      (can appear in any position among the arguments)"
     echo ""
     echo "Examples:"
     echo "  $0 --resume last my_job_name"
-    echo "  JOB_NAME_SUFFIX='' $0 --resume last my_job_name"
-    echo "  $0 --resume 10 my_job --override cf.key=value"
-    echo "  JOB_NAME_SUFFIX='_v2' $0 --resume last my_job"
+    echo "  $0 --reuse_job_name --resume last my_job_name" 
+    echo "  $0 --resume 10 my_job --reuse_job_name --override cf.key=value"
     exit 1
   }
   SUBDIR=$1; shift
+
   CHECKPOINT_BASE_PATH="${OUTPUT_DIR}/saved_models/${SUBDIR}"
+
   if [ -z "$LOAD_EPOCH" ]; then # auto-detect newest
     LATEST_TAG=$(ls "$CHECKPOINT_BASE_PATH" | grep '^epoch' | sort -V | tail -n1)
     LOAD_EPOCH=$(printf '%s\n' "$LATEST_TAG" | sed -E 's/^epoch([0-9]+).*/\1/')
@@ -55,11 +67,20 @@ if [ "${1-}" = "--resume" ]; then
   else
     CHECKPOINT_EPOCH_NAME=$(basename "${CHECKPOINT_BASE_PATH}/epoch${LOAD_EPOCH}"_*)
   fi
+
   echo ">> Resuming from checkpoint: $CHECKPOINT_EPOCH_NAME"
+
+
   JOB_NAME="${SUBDIR}_from_epoch_${LOAD_EPOCH}${JOB_NAME_SUFFIX}"
+  if $REUSE_JOB_NAME; then
+    JOB_NAME="$SUBDIR"
+  fi
 else
   # Set up for initial training
   JOB_NAME="${BASE_JOB_NAME}${JOB_NAME_SUFFIX}"
+  if $REUSE_JOB_NAME; then
+    JOB_NAME="$BASE_JOB_NAME"
+  fi
 fi
 
 if [ "${1-}" = "--override" ]; then
