@@ -78,9 +78,6 @@ if [ "${1-}" = "--resume" ]; then
 else
   # Set up for initial training
   JOB_NAME="${BASE_JOB_NAME}${JOB_NAME_SUFFIX}"
-  if $REUSE_JOB_NAME; then
-    JOB_NAME="$BASE_JOB_NAME"
-  fi
 fi
 
 if [ "${1-}" = "--override" ]; then
