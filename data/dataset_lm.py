@@ -19,7 +19,7 @@ from collections import deque, namedtuple
 from tqdm import tqdm
 from transformers import BertTokenizerFast, AutoTokenizer
 
-from data.dataset_utils import load_hf_datasets, materialize_data
+from data.dataset_utils import load_hf_datasets, materialize_data, load_local_datasets
 
 
 def BertPretrainingDatasetFactory(base_dir, dataset_config, args=None):
@@ -486,6 +486,18 @@ class BertOnlyMLMDataset(Dataset):
             ds = ds.map(add_sep_tok)
             all_sentences = materialize_data(ds)
             del ds
+        elif "local_sources" in dataset_config:
+            print(time.ctime(), f"Started loading data from local datasets")
+            eos_token = self.tokenizer.eos_token
+
+            def strip_add_eos_tok(example):
+                example["text"] = example["text"].strip() + eos_token
+                return example
+
+            data = load_local_datasets(dataset_config["local_sources"], seed=self.seed)
+            data = [strip_add_eos_tok(ex) for ex in data]
+            all_sentences = [ex["text"] for ex in data if "text" in ex]
+            del data
         else:
             file_path = os.path.join(base_dir, dataset_config["input_file"])
             print(time.ctime(), f"Started Building documents from {file_path}")
@@ -619,6 +631,18 @@ class GPTPretrainingDataset(Dataset):
             all_sentences = materialize_data(ds)
             del ds
             base_name = f"offset_{dataset_config['hf_sources'][0].get('offset', 0):012}"
+        elif "local_sources" in dataset_config:
+            print(time.ctime(), f"Started loading data from local datasets")
+            eos_token = self.tokenizer.eos_token
+
+            def strip_add_eos_tok(example):
+                example["text"] = example["text"].strip() + eos_token
+                return example
+
+            data = load_local_datasets(dataset_config["local_sources"], seed=self.seed)
+            data = [strip_add_eos_tok(ex) for ex in data]
+            all_sentences = [ex["text"] for ex in data if "text" in ex]
+            del data
         else:
             file_path = os.path.join(base_dir, dataset_config["input_file"])
             base_name, ext = os.path.splitext(file_path)

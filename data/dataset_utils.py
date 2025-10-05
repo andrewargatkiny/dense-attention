@@ -1,10 +1,17 @@
 import copy
 import os
+import io
+import gzip
+import json
 import random
 import time
+import pandas as pd
+import pyarrow.parquet as pq
+import zstandard as zstd
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, Dict, Iterator, Any, Tuple
+from itertools import islice
 
 import datasets
 import huggingface_hub
@@ -181,6 +188,195 @@ def materialize_data(ds: datasets.IterableDataset) -> List[str]:
             seconds_to_sleep = max(300, seconds_to_sleep + 60)
 
 
+@dataclass
+class LocalDatasetParams:
+    path: str
+    chunk_size: int
+    offset: int = 0
+    world_size: int = 1
+    global_rank: int = 0
+    dataset_weight: float = 1.0
+    filter_geq_column: Optional[str] = None
+    filter_geq_value: int = 0
+    filter_leq_column: Optional[str] = None
+    filter_leq_value: int = 2**64
+
+
+_file_len_cache: Dict[str, int] = {}
+
+def open_compressed_file(path: str):
+    if path.endswith(".gz"):
+        return gzip.open(path, "rt", encoding="utf-8")
+    if path.endswith(".zst") or path.endswith(".zstd"):
+        dctx = zstd.ZstdDecompressor()
+        f = open(path, "rb")
+        return io.TextIOWrapper(dctx.stream_reader(f), encoding="utf-8")
+    return open(path, "r", encoding="utf-8")
+
+
+def get_file_len(path: str) -> int:
+    if path in _file_len_cache:
+        return _file_len_cache[path]
+
+    if path.endswith(".parquet"):
+        pf = pq.ParquetFile(path)
+        n = pf.metadata.num_rows
+    else:
+        n = sum(1 for _ in open_compressed_file(path))
+
+    _file_len_cache[path] = n
+    return n
+
+
+def read_chunk_from_file(path: str, local_offset: int, take: int) -> List[Dict]:
+    if take <= 0:
+        return []
+
+    if path.endswith(".parquet"):
+        pf = pq.ParquetFile(path)
+        result = []
+        remaining = take
+        skip = local_offset
+        for batch in pf.iter_batches(batch_size=4096):
+            df = batch.to_pandas()
+            n = len(df)
+            if skip >= n:
+                skip -= n
+                continue
+            start = skip
+            end = start + min(remaining, n - start)
+            result.extend(df.iloc[start:end].to_dict(orient="records"))
+            remaining -= (end - start)
+            skip = 0
+            if remaining <= 0:
+                break
+        return result
+
+    result = []
+    with open_compressed_file(path) as f:
+        for line in islice(f, local_offset, local_offset + take):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+            except json.JSONDecodeError:
+                obj = {"text": line}
+            result.append(obj)
+    return result
+
+
+def read_sharded_across_files(files: List[str],
+                              world_size: int,
+                              global_rank: int,
+                              chunk_size: int,
+                              offset: int) -> List[Dict]:
+    total_len = sum(get_file_len(f) for f in files)
+    shard_size = (total_len + world_size - 1) // world_size  # ceil division
+
+    shard_start = shard_size * global_rank
+    shard_end = min(total_len, shard_start + shard_size)
+
+    start = min(shard_start + offset, shard_end)
+    end = min(start + chunk_size, shard_end)
+
+    if start >= end:
+        return []
+
+    data = []
+    cumulative = 0
+    file_idx = 0
+    while file_idx < len(files) and cumulative + get_file_len(files[file_idx]) <= start:
+        cumulative += get_file_len(files[file_idx])
+        file_idx += 1
+
+    local_offset = start - cumulative if file_idx < len(files) else 0
+    remaining = end - start
+
+    while file_idx < len(files) and remaining > 0:
+        path = files[file_idx]
+        file_len = get_file_len(path)
+        take = min(remaining, file_len - local_offset)
+        if take > 0:
+            data.extend(read_chunk_from_file(path, local_offset, take))
+            remaining -= take
+        file_idx += 1
+        local_offset = 0
+
+    return data
+
+def apply_filters(data: List[Dict], params: LocalDatasetParams) -> List[Dict]:
+    if params.filter_geq_column:
+        col = params.filter_geq_column
+        val = params.filter_geq_value
+        if col == "text":
+            data = [ex for ex in data if len(ex.get("text", "").split()) >= val]
+        else:
+            data = [ex for ex in data if ex.get(col) is not None and ex.get(col) >= val]
+
+    if params.filter_leq_column:
+        col = params.filter_leq_column
+        val = params.filter_leq_value
+        if col == "text":
+            data = [ex for ex in data if len(ex.get("text", "").split()) <= val]
+        else:
+            data = [ex for ex in data if ex.get(col) is not None and ex.get(col) <= val]
+
+    return data
+
+def load_local_datasets(dataset_configs: List[dict], seed: Optional[int] = None) -> List[Dict]:
+    params_list = [LocalDatasetParams(**cfg) for cfg in dataset_configs]
+    chunks_with_weights = []
+
+    for params in params_list:
+        if os.path.isdir(params.path):
+            files = sorted(
+                os.path.join(params.path, f)
+                for f in os.listdir(params.path)
+                if os.path.isfile(os.path.join(params.path, f))
+            )
+        else:
+            files = [params.path]
+
+        data_chunk = read_sharded_across_files(
+            files,
+            world_size=params.world_size,
+            global_rank=params.global_rank,
+            chunk_size=params.chunk_size,
+            offset=params.offset,
+        )
+        data_chunk = apply_filters(data_chunk, params)
+        chunks_with_weights.append((data_chunk, params.dataset_weight))
+
+    # Если один источник
+    if len(chunks_with_weights) == 1:
+        return chunks_with_weights[0][0][:params_list[0].chunk_size]
+
+    if seed is not None:
+        random.seed(seed)
+
+    datasets = [c for c, _ in chunks_with_weights]
+    weights = [w for _, w in chunks_with_weights]
+    iters = [iter(d) for d in datasets]
+
+    combined = []
+    target_size = params_list[0].chunk_size
+
+    while len(combined) < target_size and datasets:
+        idx = random.choices(range(len(datasets)), weights=weights, k=1)[0]
+        try:
+            ex = next(iters[idx])
+            combined.append(ex)
+        except StopIteration:
+            datasets.pop(idx)
+            iters.pop(idx)
+            weights.pop(idx)
+            if not datasets:
+                break
+            weights = [w / sum(weights) for w in weights]
+
+    return combined[:target_size]
+
 class ShardedDatasetWrapper:
     """For multi-file datasets and distributed training. Each data file should
     have all components necessary for training, e.g. input, mask, label."""
@@ -201,11 +397,16 @@ class ShardedDatasetWrapper:
             self.world_size = dist.get_world_size()
 
         self.use_hf_sources = False
-        if self.dataset_config.get("hf_sources"):
-            self.use_hf_sources = True
+        self.use_local_sources = False
+        if self.dataset_config.get("hf_sources") or self.dataset_config.get("local_sources"):
+            if self.dataset_config.get("hf_sources"):
+                self.use_hf_sources = True
+            else:
+                self.use_local_sources = True
             self.chunk_sizes = dict()
             self.current_offsets = dict()
-            for source in dataset_config["hf_sources"]:
+            self.flag = "hf_sources" if self.dataset_config.get("hf_sources") else "local_sources"
+            for source in dataset_config[self.flag]:
                 # Number of raw dataset entries to treat as one chunk
                 self.chunk_sizes[source["name"]] = source.get(
                     "chunk_size", 2 ** 20)
@@ -237,8 +438,8 @@ class ShardedDatasetWrapper:
             )
 
     def dataset_order_info(self):
-        if self.use_hf_sources:
-            for source in self.dataset_config["hf_sources"]:
+        if self.use_hf_sources or self.use_local_sources:
+            for source in self.dataset_config[self.flag]:
                 print(f"rank {self.global_rank} "
                       f"dataset name {source['name']} "
                       f"subset {source.get('subset')}, "
@@ -259,8 +460,8 @@ class ShardedDatasetWrapper:
     def get_dataset_config(self, index: int, tag: str = "next") -> dict:
         dataset_config = copy.deepcopy(self.dataset_config)
         offset_or_datafile = self._get_shard_file(index)
-        if self.use_hf_sources:
-            for source in dataset_config["hf_sources"]:
+        if self.use_hf_sources or self.use_local_sources:
+            for source in dataset_config[self.flag]:
                 source["offset"] = offset_or_datafile[source["name"]]
                 source["chunk_size"] = self.chunk_sizes[source["name"]]
                 source["world_size"] = self.world_size
@@ -268,7 +469,7 @@ class ShardedDatasetWrapper:
                 self.logger.info(
                     f"ShardedDatasetWrapper - {tag} dataset offsets: "
                     f"{offset_or_datafile}"
-            )
+                )
         else:
             dataset_config["input_file"] = offset_or_datafile
             self.logger.info(
@@ -310,7 +511,7 @@ class ShardedDatasetWrapper:
         pass
 
     def _get_shard_file(self, shard_index):
-        if self.use_hf_sources:
+        if self.use_hf_sources or self.use_local_sources:
             for ds_name in self.current_offsets:
                 self.current_offsets[ds_name] = (
                         self.chunk_sizes[ds_name] * shard_index)
