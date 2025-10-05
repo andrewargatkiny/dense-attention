@@ -1,5 +1,6 @@
-from ..danet_layers import DANetLayer, DANetLayerWithLocalAttention, DANetLayerConfig, DANetLayerWithLocalAttentionConfig
-from ..other_models.modeling_new import BertLayer, TransformerConfig
+from ..danet_layers import DANetLayer, DANetLayerWithLocalAttention
+from ..model_config import DANetLayerConfig
+from ..other_models.modeling import BertLayer, TransformerLayerConfig
 
 
 LAYER_TYPE2CLASS = {
@@ -9,7 +10,7 @@ LAYER_TYPE2CLASS = {
 }
 
 LAYER_TYPE2CONFIG_CLASS = {
-    'transformer': TransformerConfig,
+    'transformer': TransformerLayerConfig,
     'danet': DANetLayerConfig,
-    'danet_with_local_attention': DANetLayerWithLocalAttentionConfig,
+    'danet_with_local_attention': DANetLayerConfig,
 }

@@ -22,6 +22,9 @@
         "layers_scheme": "tr_danet",
         "layers": [
             {
+                "hidden_size": 128,
+                "num_hidden_layers": 6,
+                "num_attention_heads": 8,
                 "layer_name": "tr",
                 "layer_type": "transformer",
                 "pre_attn_ln_type": "default",
@@ -30,6 +33,9 @@
                 "attn_proj_biases": true
             },
             {
+                "hidden_size": 128,
+                "num_hidden_layers": 6,
+                "num_attention_heads": 8,
                 "layer_name": "danet",
                 "layer_type": "danet",
                 "pre_attn_ln_type": "max_norm",

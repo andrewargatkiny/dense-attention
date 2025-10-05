@@ -5,7 +5,7 @@
         "hidden_size": 128,
         "num_hidden_layers": 6,
         "num_attention_heads": 4,
-        "intermediate_size": 512,
+
         "hidden_act": "gelu",
         "hidden_dropout_prob": 0.0,
         "attention_probs_dropout_prob": 0.0,
@@ -20,6 +20,8 @@
         "layers_scheme": "tr_swa",
         "layers": [
             {
+                "hidden_size": 128,
+                "num_attention_heads": 4,
                 "layer_name": "tr",
                 "layer_type": "transformer",
                 "pre_attn_ln_type": "default",
@@ -28,11 +30,23 @@
                 "attn_proj_biases": true
             },
             {
+                "hidden_size": 128,
+                "num_attention_heads": 4,
                 "layer_name": "swa",
                 "layer_type": "transformer",
                 "pre_attn_ln_type": "default",
                 "post_attn_ln_type": "default",
                 "attention_kernel": "swa",
+                "attn_proj_biases": true
+            },
+            {
+                "hidden_size": 128,
+                "num_attention_heads": 8,
+                "layer_name": "linear",
+                "layer_type": "transformer",
+                "pre_attn_ln_type": "default",
+                "post_attn_ln_type": "default",
+                "attention_kernel": "linear",
                 "attn_proj_biases": true
             }
         ]

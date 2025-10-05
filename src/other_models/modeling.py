@@ -39,6 +39,7 @@ from src.positional_embeddings import PositionalEmbeddingsTypes, SinusoidalPosit
 from .attention_kernels import SoftmaxAttention, LinearAttention, SlidingWindowAttention, PowerAttention
 from ..activations import Activation2Class
 
+
 logger = logging.getLogger(__name__)
 
 PRETRAINED_MODEL_ARCHIVE_MAP = {
@@ -59,6 +60,7 @@ PRETRAINED_MODEL_ARCHIVE_MAP = {
 }
 CONFIG_NAME = 'bert_config.json'
 WEIGHTS_NAME = 'pytorch_model.bin'
+
 
 
 def gelu(x):
@@ -109,8 +111,10 @@ class TransformerConfig(object):
                  window_size=1024,
                  apply_relpe_after=False,
                  local_scheme=None,
+                 layers_scheme=None,
                  power=2,
                  scaling_d_factor=False,
+                 layers=None,
                  **kwargs):
         """Constructs ModelConfig.
 
@@ -197,8 +201,10 @@ class TransformerConfig(object):
             self.window_size = window_size
             self.apply_relpe_after = apply_relpe_after
             self.local_scheme = local_scheme
+            self.layers_scheme = layers_scheme
             self.power = power
             self.scaling_d_factor = scaling_d_factor
+            self.layers = layers
         else:
             raise ValueError(
                 "First argument must be either a vocabulary size (int)"
@@ -227,6 +233,144 @@ class TransformerConfig(object):
     def to_dict(self):
         """Serializes this instance to a Python dictionary."""
         output = copy.deepcopy(self.__dict__)
+        return output
+
+    def to_json_string(self):
+        """Serializes this instance to a JSON string."""
+        return json.dumps(self.to_dict(), indent=2, sort_keys=True) + "\n"
+
+class TransformerLayerConfig(object):
+    """Configuration class to store the configuration of a `BertModel`.
+    """
+    def __init__(self,
+                 hidden_size=768,
+                 num_hidden_layers=12,
+                 num_attention_heads=12,
+                 intermediate_size=3072,
+                 attention_kernel="softmax",
+                 feature_map=None,
+                 no_reweight=False,
+                 no_reweight_post_norm=None,
+                 hidden_act="gelu",
+                 hidden_dropout_prob=0.1,
+                 attention_probs_dropout_prob=0.1,
+                 attn_proj_biases=True,
+                 initializer_range=0.02,
+                 pre_attn_ln_type="default",
+                 post_attn_ln_type="default",
+                 causal=False,
+                 local_attention=False,
+                 window_size=1024,
+                 apply_relpe_after=False,
+                 max_position_embeddings=512,
+                 pos_emb_type="learned",
+                 relpe_type=None,
+                 power=2,
+                 scaling_d_factor=False,
+                 **kwargs):
+        """Constructs ModelConfig.
+
+        Args:
+            vocab_size_or_config_json_file: Vocabulary size of `inputs_ids` in `BertModel`.
+            hidden_size: Size of the encoder layers and the pooler layer.
+            num_hidden_layers: Number of hidden layers in the Transformer encoder.
+            num_attention_heads: Number of attention heads for each attention layer in
+                the Transformer encoder.
+            intermediate_size: The size of the "intermediate" (i.e., feed-forward)
+                layer in the Transformer encoder.
+            hidden_act: The non-linear activation function (function or string) in the
+                encoder and pooler. If string, "gelu", "relu" and "swish" are supported.
+            hidden_dropout_prob: The dropout probabilitiy for all fully connected
+                layers in the embeddings, encoder, and pooler.
+            attention_probs_dropout_prob: The dropout ratio for the attention
+                probabilities.
+            attn_proj_biases: Whether to use bias in Q, K, V, O matrices in attention.
+            max_position_embeddings: The maximum sequence length that this model might
+                ever be used with. Typically set this to something large just in case
+                (e.g., 512 or 1024 or 2048).
+            type_vocab_size: The vocabulary size of the `token_type_ids` passed into
+                `BertModel`.
+            initializer_range: The sttdev of the truncated_normal_initializer for
+                initializing all weight matrices.
+            apply_relpe_after: Whether Relative Positional Encoding (RELPE) is applied after the feature map (if true)
+             or before the linear attention kernel (if false).
+            local_scheme: Scheme to form patterns of local and global attention
+                layers. Should contain lowercase-letter layer codes separated
+                by underscore '_'. Available codes: 'l' (local attention), 'sl'
+                (shifted local), 'swa' (sliding window), and 'g' (global).
+                If None, `local_attention` flag is used with a hardcoded scheme.
+            pre_attn_ln_type: If not set to "default" (which is `BertLayerNorm`),
+                determines the type of layer norm or activation to use before attention.
+            post_attn_ln_type: Like `pre_attn_ln_type` but for usage before FFN.
+            attention_kernel: Mechanism for attention to use. Currently supported:
+                "softmax", "swa", "linear", "power". Power attention is subtype of
+                linear attention, and many options for linear attention also apply.
+            feature_map: A feature map transform (\phi) for queries and keys in linear
+                attentions.
+            no_reweight: For linear attentions, if set to true, doesn't scale attention
+                scores by their row-wise sums.
+            no_reweight_post_norm: In case of enabled `no_reweight` option in linear
+                attentions, determines whether and which layer norm to use at the end
+                of attention kernel computation. Defaults to None.
+            apply_relpe_after: For linear attentions, determines whether Relative
+                Positional Encoding (RELPE) is applied after the feature map (if true)
+                or before the linear attention kernel (if false).
+            power: For Power Attention, determines the power (p).
+            scaling_d_factor: For Power Attention, determines whether to scale q,k by a
+                predetermined scaling factor depending on d for additional numerical
+                stability.
+        """
+        
+        self.num_hidden_layers = num_hidden_layers
+        self.hidden_size = hidden_size
+        self.num_attention_heads = num_attention_heads
+        self.hidden_act = hidden_act
+        self.intermediate_size = intermediate_size
+        self.attention_kernel = attention_kernel
+        self.feature_map = feature_map
+        self.no_reweight = no_reweight
+        self.no_reweight_post_norm = no_reweight_post_norm
+        self.hidden_dropout_prob = hidden_dropout_prob
+        self.attention_probs_dropout_prob = attention_probs_dropout_prob
+        self.attn_proj_biases = attn_proj_biases
+        self.max_position_embeddings = max_position_embeddings
+        self.pos_emb_type = pos_emb_type
+        self.relpe_type = relpe_type
+        self.initializer_range = initializer_range
+        self.pre_attn_ln_type = pre_attn_ln_type
+        self.post_attn_ln_type = post_attn_ln_type
+        self.causal = causal
+        self.local_attention = local_attention
+        self.window_size = window_size
+        self.apply_relpe_after = apply_relpe_after
+        self.power = power
+        self.scaling_d_factor = scaling_d_factor
+        
+    @classmethod
+    def from_dict(cls, json_object):
+        """Constructs a `ModelConfig` from a Python dictionary of parameters."""
+        config = TransformerLayerConfig(vocab_size_or_config_json_file=-1)
+        for key, value in json_object.items():
+            config.__dict__[key] = value
+        if torch.distributed.get_rank() == 0:
+            print(config)
+        return config
+
+    @classmethod
+    def from_json_file(cls, json_file):
+        """Constructs a `ModelConfig` from a json file of parameters."""
+        with open(json_file, "r", encoding='utf-8') as reader:
+            text = reader.read()
+        return cls.from_dict(json.loads(text))
+
+    def __repr__(self):
+        return str(self.to_json_string())
+
+    def to_dict(self):
+        """Serializes this instance to a Python dictionary."""
+        output = copy.deepcopy(self.__dict__)
+        output['pos_emb_type'] = output['pos_emb_type'].name.lower()
+
         return output
 
     def to_json_string(self):
@@ -625,9 +769,32 @@ class BertLayer(nn.Module):
             self.intermediate = BertSwigluUp(config)
             self.output = BertSwigluDown(config)
 
-    def forward(self, hidden_states, attention_mask, rope_cache):
+        # Local, layer-specific initialization: duplicate the relevant parts
+        # from the global initializer, without relying on outer apply().
+        self._init_weights(config)
+
+    def _init_weights(self, config):
+        num_layers = config.num_hidden_layers
+        base_std = config.initializer_range
+
+        for module in self.modules():
+            # Initialize linear layers
+            if isinstance(module, nn.Linear):
+                std = base_std
+                # Match residual path scaling used previously via 'bert_output_layer'
+                if hasattr(module, 'bert_output_layer'):
+                    std = base_std / math.sqrt(2.0 * num_layers)
+                module.weight.data.normal_(mean=0.0, std=std)
+                if module.bias is not None:
+                    module.bias.data.zero_()
+            # Initialize layer norms
+            elif isinstance(module, BertLayerNorm):
+                module.bias.data.zero_()
+                module.weight.data.fill_(1.0)
+
+    def forward(self, hidden_states, attention_mask, rope_cache, **kwargs):
         input_layer_norm = self.PreAttentionLayerNorm(hidden_states)
-        attention_output = self.attention(input_layer_norm, attention_mask, rope_cache)
+        attention_output = self.attention(input_layer_norm, attention_mask, rope_cache, **kwargs)
         #atention_output = self.MidAttentionLayerNorm(attention_output)
         intermediate_input = hidden_states + attention_output
 
@@ -637,7 +804,6 @@ class BertLayer(nn.Module):
         layer_output = self.output(intermediate_output)
 
         return layer_output + intermediate_input
-
 
 class BertEncoder(nn.Module):
     def __init__(self, config):
@@ -649,53 +815,88 @@ class BertEncoder(nn.Module):
                 config.relpe_type is not None):
             self.relpe_type = RelPEType[config.relpe_type.upper()]
         else:
-            self. relpe_type = RelPEType.DUMMY
+            self.relpe_type = RelPEType.DUMMY
         self.rope_cache = RelPETypeToClass[self.relpe_type](
             config.max_position_embeddings, #args.max_seq_length
             config.hidden_size // config.num_attention_heads,
-            #num_heads=config.num_attention_heads
+            num_heads=None
         )
 
-        layer = BertLayer(config)
-        self.layer = nn.ModuleList(
-            [copy.deepcopy(layer) for _ in range(config.num_hidden_layers)])
+        if config.layers is None:
 
-        # logic for local attention scheme
-        if hasattr(config, 'local_scheme') and config.local_scheme:
-            scheme = config.local_scheme.split('_')
-            valid_codes = {'g', 'l', 'sl', 'swa'}
-            for code in scheme:
-                if code not in valid_codes:
-                    raise ValueError(f"Unknown attention type code '{code}' in local_scheme. "
-                                     f"Valid codes are: {sorted(list(valid_codes))}")
+            layer = BertLayer(config)
+            self.layer = nn.ModuleList(
+                [copy.deepcopy(layer) for _ in range(config.num_hidden_layers)])
 
-            for i, layer_module in enumerate(self.layer):
-                code = scheme[i % len(scheme)]
-                if code == 'l':
-                    layer_module.attention.self = BertSelfLocalAttention(config)
-                elif code == 'sl':
-                    layer_module.attention.self = BertSelfShiftedLocalAttention(config)
-                elif code == 'swa':
-                    layer_config = copy.deepcopy(config)
-                    layer_config.attention_kernel = "swa"
-                    layer_module.attention.self = BertSelfAttention(layer_config)
-                # 'g' is the default and requires no change, so we just pass.
-        # fallback to old logic for backward compatibility
-        elif config.local_attention:
-            for i, layer in enumerate(self.layer):
-                if i % 3 == 0:
-                    layer.attention.self = BertSelfLocalAttention(config)
-                elif i % 3 == 1:
-                    layer.attention.self = BertSelfShiftedLocalAttention(config)
+            # logic for local attention scheme
+            if hasattr(config, 'local_scheme') and config.local_scheme:
+                scheme = config.local_scheme.split('_')
+                valid_codes = {'g', 'l', 'sl', 'swa'}
+                for code in scheme:
+                    if code not in valid_codes:
+                        raise ValueError(f"Unknown attention type code '{code}' in local_scheme. "
+                                            f"Valid codes are: {sorted(list(valid_codes))}")
 
+                for i, layer_module in enumerate(self.layer):
+                    code = scheme[i % len(scheme)]
+                    if code == 'l':
+                        layer_module.attention.self = BertSelfLocalAttention(config)
+                    elif code == 'sl':
+                        layer_module.attention.self = BertSelfShiftedLocalAttention(config)
+                    elif code == 'swa':
+                        layer_config = copy.deepcopy(config)
+                        layer_config.attention_kernel = "swa"
+                        layer_module.attention.self = BertSelfAttention(layer_config)
+                    # 'g' is the default and requires no change, so we just pass.
+            # fallback to old logic for backward compatibility
+            elif config.local_attention:
+                for i, layer in enumerate(self.layer):
+                    if i % 3 == 0:
+                        layer.attention.self = BertSelfLocalAttention(config)
+                    elif i % 3 == 1:
+                        layer.attention.self = BertSelfShiftedLocalAttention(config)
+        else:
+            # Lazy import to avoid circular import issues
+            from .layers_registry import LAYER_TYPE2CLASS, LAYER_TYPE2CONFIG_CLASS
+
+            name_to_config = {}
+            for layer in config.layers:
+                if "layer_type" not in layer:
+                    raise ValueError(f"Layer '{layer['layer_name']}' must contain 'layer_type'")
+                layer_name = layer["layer_name"]
+                if layer_name in name_to_config:
+                    raise ValueError(f"Duplicate layer_name detected in config.layers: '{layer_name}'")
+                name_to_config[layer_name] = layer
+
+            ordered_names = config.layers_scheme.split("_")
+            if len(ordered_names) == 0:
+                raise ValueError("layers_scheme must be a non-empty string of layer_name identifiers")
+            repeats = config.num_hidden_layers // len(ordered_names)
+            modules = []
+            for _ in range(repeats):
+                for layer_name in ordered_names:
+                    layer_config_dict = name_to_config[layer_name]
+                    layer_type = layer_config_dict["layer_type"]
+                    model_config_dict = config.to_dict()
+                    model_config_dict.update(layer_config_dict)
+                    config_class = LAYER_TYPE2CONFIG_CLASS[layer_type]
+                    layer_config = config_class(**model_config_dict)
+                    layer_class = LAYER_TYPE2CLASS[layer_type]
+                    module = layer_class(layer_config)
+                    modules.append(module)
+            
+            self.layer = nn.ModuleList(modules)
+            # Save window_size for mask preparation in forward
+            self.window_size = getattr(config, 'window_size', 1024)
+            
     def forward(self,
                 hidden_states,
                 attention_mask,
-                output_all_encoded_layers=True):
+                output_all_encoded_layers=True, **kwargs):
 
         all_encoder_layers = []
         for layer_module in self.layer:
-            hidden_states = layer_module(hidden_states, attention_mask, self.rope_cache)
+            hidden_states = layer_module(hidden_states, attention_mask=attention_mask, rope_cache=self.rope_cache, **kwargs)
             if output_all_encoded_layers:
                 all_encoder_layers.append(hidden_states)
         if not output_all_encoded_layers:
@@ -999,14 +1200,17 @@ class BertModel(PreTrainedBertModel):
         self.embeddings = BertEmbeddings(config)
         self.encoder = BertEncoder(config)
         self.pooler = BertPooler(config)
-        self.apply(self.init_bert_weights)
+        # Do not initialize encoder layers here; only non-layer parts
+        self.embeddings.apply(self.init_bert_weights)
+        self.pooler.apply(self.init_bert_weights)
         logger.info("Init BERT pretrain model")
 
     def forward(self,
                 input_ids,
                 token_type_ids=None,
                 attention_mask=None,
-                output_all_encoded_layers=True):
+                output_all_encoded_layers=True,
+                **kwargs):
         if attention_mask is None:
             attention_mask = torch.ones_like(input_ids)
         if token_type_ids is None:
@@ -1032,7 +1236,9 @@ class BertModel(PreTrainedBertModel):
         encoded_layers = self.encoder(
             embedding_output,
             extended_attention_mask,
-            output_all_encoded_layers=output_all_encoded_layers)
+            output_all_encoded_layers=output_all_encoded_layers,
+            **kwargs
+        )
         sequence_output = encoded_layers[-1]
         pooled_output = self.pooler(sequence_output)
         if not output_all_encoded_layers:
@@ -1108,7 +1314,8 @@ class TransformerForPreTraining(PreTrainedBertModel):
             self.head = self.mlm_head
         elif args.only_cls_task:
             self.head = self.cls_head
-        self.apply(self.init_bert_weights)
+        # Initialize only heads; encoder layers self-initialize.
+        self.cls.apply(self.init_bert_weights)
         self.args = args
 
     def mlm_cls_head(self,
@@ -1164,13 +1371,14 @@ class TransformerForPreTraining(PreTrainedBertModel):
         return next_sentence_loss
 
     def forward(self, input_ids, attention_mask=None, token_type_ids=None,
-                masked_lm_labels=None, label=None, log=True):
+                masked_lm_labels=None, label=None, log=True, **kwargs):
 
         sequence_output, pooled_output = self.bert(
             input_ids,
             token_type_ids,
             attention_mask,
             output_all_encoded_layers=False,
+            **kwargs
         )
 
         if masked_lm_labels is None:
@@ -1241,7 +1449,8 @@ class BertForMaskedLM(PreTrainedBertModel):
         self.bert = BertModel(config)
         self.cls = BertOnlyMLMHead(config,
                                    self.bert.embeddings.word_embeddings.weight)
-        self.apply(self.init_bert_weights)
+        # Initialize only head; encoder layers self-initialize.
+        self.cls.apply(self.init_bert_weights)
 
     def forward(self,
                 input_ids,
@@ -1312,7 +1521,8 @@ class BertForNextSentencePrediction(PreTrainedBertModel):
         self.PATH_TO_BACKBONE = "bert"
         self.bert = BertModel(config)
         self.cls = BertOnlyNSPHead(config)
-        self.apply(self.init_bert_weights)
+        # Initialize only head; encoder layers self-initialize.
+        self.cls.apply(self.init_bert_weights)
 
     def forward(self,
                 input_ids,
@@ -1387,7 +1597,8 @@ class TransformerForSequenceClassification(PreTrainedBertModel):
         self.bert = BertModel(config)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.classifier = nn.Linear(config.hidden_size, self.num_labels)
-        self.apply(self.init_bert_weights)
+        # Initialize only head; encoder layers self-initialize.
+        self.classifier.apply(self.init_bert_weights)
 
     def forward(self,
                 input_ids,
@@ -1427,7 +1638,8 @@ class TransformerForRegression(PreTrainedBertModel):
         self.classifier = self.cls.seq_relationship
         """
 
-        self.apply(self.init_bert_weights)
+        # Initialize only head; encoder layers self-initialize.
+        self.regressor.apply(self.init_bert_weights)
         self.use_local_attention = config.local_attention
 
     def forward(self,
@@ -1508,7 +1720,9 @@ class TransformerForAANMatching(PreTrainedBertModel):
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.activation = nn.GELU(approximate='tanh')
         self.classifier = nn.Linear(config.hidden_size, self.num_labels)
-        self.apply(self.init_bert_weights)
+        # Initialize only head parts; encoder layers self-initialize.
+        self.dense.apply(self.init_bert_weights)
+        self.classifier.apply(self.init_bert_weights)
 
     def forward(self,
                 input_ids,
@@ -1597,7 +1811,8 @@ class BertForMultipleChoice(PreTrainedBertModel):
         self.bert = BertModel(config)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.classifier = nn.Linear(config.hidden_size, 1)
-        self.apply(self.init_bert_weights)
+        # Initialize only head; encoder layers self-initialize.
+        self.classifier.apply(self.init_bert_weights)
 
     def forward(self,
                 input_ids,
@@ -1675,7 +1890,8 @@ class BertForTokenClassification(PreTrainedBertModel):
         self.bert = BertModel(config)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.classifier = nn.Linear(config.hidden_size, num_labels)
-        self.apply(self.init_bert_weights)
+        # Initialize only head; encoder layers self-initialize.
+        self.classifier.apply(self.init_bert_weights)
 
     def forward(self,
                 input_ids,
@@ -1751,7 +1967,8 @@ class BertForQuestionAnswering(PreTrainedBertModel):
         # TODO check with Google if it's normal there is no dropout on the token classifier of SQuAD in the TF version
         # self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.qa_outputs = nn.Linear(config.hidden_size, 2)
-        self.apply(self.init_bert_weights)
+        # Initialize only head; encoder layers self-initialize.
+        self.qa_outputs.apply(self.init_bert_weights)
 
     def forward(self,
                 input_ids,
