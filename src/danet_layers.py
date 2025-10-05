@@ -7,14 +7,14 @@ from src.other_models.modeling import BertAttention, BertLocalAttention, BertShi
 from src.activations import StandardLayerNorm, Activation2Class
 from src.dense_attention import DenseAttention
 from src.expanded_ffn import ExpandedFFN, SwiGLU
-from src.model_config import ModelConfig
+from src.model_config import DANetLayerConfig
 from src.positional_embeddings import RoPE
 
 
 class DANetLayer(nn.Module):
     """Basic DenseAttention Network layer which can be put into a model as a
     replacement to a standard Transformer block."""
-    def __init__(self, config: ModelConfig, layer_number: int=0):
+    def __init__(self, config: DANetLayerConfig, layer_number: int=0):
         super(DANetLayer, self).__init__()
         self.activation = Activation2Class[config.pre_attn_ln_type](config.hidden_size)
         self.attention = DenseAttention(config, layer_number=layer_number)
@@ -39,7 +39,7 @@ class DANetLayerWithLocalAttention(nn.Module):
         'g': 'global', 'l': 'local', 'sl': 'shifted_local',
         'sw': 'sliding_window', 'softmax': 'softmax'
     }
-    def __init__(self, config: ModelConfig, layer_number: int=0):
+    def __init__(self, config: DANetLayerConfig, layer_number: int=0):
         super(DANetLayerWithLocalAttention, self).__init__()
         self.activation = Activation2Class[config.pre_attn_ln_type](config.hidden_size)
         self.window_size = config.window_size
@@ -89,7 +89,7 @@ class TransformerLayer(nn.Module):
         'l@softmax': BertLocalAttention,
         'sl@softmax': BertShiftedLocalAttention
     }
-    def __init__(self, config: ModelConfig, layer_number: int=0):
+    def __init__(self, config: DANetLayerConfig, layer_number: int=0):
         super(TransformerLayer, self).__init__()
         config = copy.deepcopy(config)
         self.window_size = config.window_size
