@@ -237,19 +237,28 @@ def read_chunk_from_file(path: str, local_offset: int, take: int) -> List[Dict]:
         result = []
         remaining = take
         skip = local_offset
-        for batch in pf.iter_batches(batch_size=4096):
-            df = batch.to_pandas()
-            n = len(df)
+        for batch in pf.iter_batches(batch_size=4096, use_pandas_metadata=True):
+            n = batch.num_rows
+
             if skip >= n:
                 skip -= n
                 continue
+
             start = skip
             end = start + min(remaining, n - start)
-            result.extend(df.iloc[start:end].to_dict(orient="records"))
+            batch_slice = batch.slice(start, end - start)
+            df = batch_slice.to_pandas()
+
+            if "text" in df.columns:
+                df = df[df["text"].notnull()]
+                df["text"] = df["text"].astype(str)
+                result.extend(df.to_dict(orient="records"))
+
             remaining -= (end - start)
             skip = 0
             if remaining <= 0:
                 break
+
         return result
 
     result = []
@@ -405,14 +414,15 @@ class ShardedDatasetWrapper:
                 self.use_local_sources = True
             self.chunk_sizes = dict()
             self.current_offsets = dict()
-            self.flag = "hf_sources" if self.dataset_config.get("hf_sources") else "local_sources"
+            self.flag = "hf_sources" if self.use_hf_sources else "local_sources"
+            self.name = "name" if self.use_hf_sources else "path"
             for source in dataset_config[self.flag]:
                 # Number of raw dataset entries to treat as one chunk
-                self.chunk_sizes[source["name"]] = source.get(
+                self.chunk_sizes[source[self.name]] = source.get(
                     "chunk_size", 2 ** 20)
                 # A pointer which moves `chunk_size` entries over the
                 # dataset each epoch.
-                self.current_offsets[source["name"]] = source.get("offset", 0)
+                self.current_offsets[source[self.name]] = source.get("offset", 0)
         # Initialize dataset files
         self.dataset_path = os.path.join(
             base_dir,
@@ -441,10 +451,10 @@ class ShardedDatasetWrapper:
         if self.use_hf_sources or self.use_local_sources:
             for source in self.dataset_config[self.flag]:
                 print(f"rank {self.global_rank} "
-                      f"dataset name {source['name']} "
+                      f"dataset name {source[self.name]} "
                       f"subset {source.get('subset')}, "
-                      f"offset {self.current_offsets[source['name']]} "
-                      f"entries {self.chunk_sizes[source['name']]}")
+                      f"offset {self.current_offsets[source[self.name]]} "
+                      f"entries {self.chunk_sizes[source[self.name]]}")
             return
         for i in range(0, self.num_files // 4):
             print(f"rank {self.global_rank} {i}-th foursome of files: {self.dataset_files[4 * i:4 * (i + 1)]}")
@@ -462,8 +472,8 @@ class ShardedDatasetWrapper:
         offset_or_datafile = self._get_shard_file(index)
         if self.use_hf_sources or self.use_local_sources:
             for source in dataset_config[self.flag]:
-                source["offset"] = offset_or_datafile[source["name"]]
-                source["chunk_size"] = self.chunk_sizes[source["name"]]
+                source["offset"] = offset_or_datafile[source[self.name]]
+                source["chunk_size"] = self.chunk_sizes[source[self.name]]
                 source["world_size"] = self.world_size
                 source["global_rank"] = self.global_rank
                 self.logger.info(

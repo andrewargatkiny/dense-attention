@@ -34,7 +34,7 @@
         "training": {
             "local_sources": [
                 {
-                    "path": "data/HuggingFaceTB",
+                    "path": "data/bert_mlm/HuggingFaceTB",
                     "chunk_size": 10000,
                     "dataset_weight": 1
                 }
@@ -47,7 +47,7 @@
         "validation": {
             "local_sources": [
                 {
-                    "path": "data/HuggingFaceTB",
+                    "path": "data/bert_mlm/HuggingFaceTB",
                     "offset": 30000,
                     "chunk_size": 3000,
                     "dataset_weight": 1
