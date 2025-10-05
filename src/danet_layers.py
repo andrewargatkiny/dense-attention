@@ -23,7 +23,7 @@ class DANetLayer(nn.Module):
 
     def forward(self, hidden_states, attention_mask, rope_cache=None):
         if attention_mask.dim() == 4:
-            attention_mask = (attention_mask.squeeze(1).squeeze(1) > -1).float().unsqueeze(-1)
+            attention_mask = (attention_mask.squeeze(1).squeeze(1) > -1).to(hidden_states.dtype).unsqueeze(-1)
        
         prev_hidden_states = hidden_states
         hidden_states = self.activation(hidden_states)
@@ -70,7 +70,7 @@ class DANetLayerWithLocalAttention(nn.Module):
 
     def forward(self, hidden_states, attention_mask, rope_cache=None):
         if attention_mask.dim() == 4:
-            attention_mask = (attention_mask.squeeze(1).squeeze(1) > -1).float().unsqueeze(-1)
+            attention_mask = (attention_mask.squeeze(1).squeeze(1) > -1).to(hidden_states.dtype).unsqueeze(-1)
        
         prev_hidden_states = hidden_states
         attention_mask = self.prepare_mask_fn(attention_mask)

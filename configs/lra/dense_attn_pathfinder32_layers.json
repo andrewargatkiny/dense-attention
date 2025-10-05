@@ -14,7 +14,7 @@
         "type_vocab_size": 2,
         "initializer_range": 0.2,
         "pos_emb_type": "relpe",
-        "relpe_type": "cosine",
+        "relpe_type": "dummy",
         "pooler_function": "first",
         "pooler_no_dense": true,
         "window_size": 256,
@@ -43,6 +43,7 @@
                 "attention_complexity": "auto",
                 "swiglu_ffn": false
             }
+
         ]
     },
     "data": {
