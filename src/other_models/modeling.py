@@ -348,12 +348,10 @@ class TransformerLayerConfig(object):
         
     @classmethod
     def from_dict(cls, json_object):
-        """Constructs a `ModelConfig` from a Python dictionary of parameters."""
-        config = TransformerLayerConfig(vocab_size_or_config_json_file=-1)
+        """Constructs a `TransformerLayerConfig` from a Python dictionary of parameters."""
+        config = TransformerLayerConfig()
         for key, value in json_object.items():
             config.__dict__[key] = value
-        if torch.distributed.get_rank() == 0:
-            print(config)
         return config
 
     @classmethod
@@ -811,19 +809,20 @@ class BertEncoder(nn.Module):
 
         #Added later to make it similar to GPT-2
         self.FinalLayerNorm = BertLayerNorm(config.hidden_size, eps=1e-12)
-        if (config.pos_emb_type == PositionalEmbeddingsTypes.RELPE and
-                config.relpe_type is not None):
-            self.relpe_type = RelPEType[config.relpe_type.upper()]
-        else:
-            self.relpe_type = RelPEType.DUMMY
-        self.rope_cache = RelPETypeToClass[self.relpe_type](
-            config.max_position_embeddings, #args.max_seq_length
-            config.hidden_size // config.num_attention_heads,
-            num_heads=None
-        )
+        
+
 
         if config.layers is None:
-
+            if (config.pos_emb_type == PositionalEmbeddingsTypes.RELPE and
+                    config.relpe_type is not None):
+                self.relpe_type = RelPEType[config.relpe_type.upper()]
+            else:
+                self.relpe_type = RelPEType.DUMMY
+            self.rope_cache = RelPETypeToClass[self.relpe_type](
+                config.max_position_embeddings, #args.max_seq_length
+                config.hidden_size // config.num_attention_heads,
+                num_heads=None
+            )
             layer = BertLayer(config)
             self.layer = nn.ModuleList(
                 [copy.deepcopy(layer) for _ in range(config.num_hidden_layers)])
@@ -856,6 +855,7 @@ class BertEncoder(nn.Module):
                     elif i % 3 == 1:
                         layer.attention.self = BertSelfShiftedLocalAttention(config)
         else:
+            self.rope_caches = []
             # Lazy import to avoid circular import issues
             from .layers_registry import LAYER_TYPE2CLASS, LAYER_TYPE2CONFIG_CLASS
 
@@ -881,6 +881,26 @@ class BertEncoder(nn.Module):
                     model_config_dict.update(layer_config_dict)
                     config_class = LAYER_TYPE2CONFIG_CLASS[layer_type]
                     layer_config = config_class(**model_config_dict)
+
+                    if (model_config_dict["pos_emb_type"] == PositionalEmbeddingsTypes.RELPE and
+                            model_config_dict["relpe_type"] is not None):
+                        relpe_type = RelPEType[model_config_dict["relpe_type"].upper()]
+                    else:
+                        relpe_type = RelPEType.DUMMY
+                    if model_config_dict["layer_type"] in ["danet", "danet_with_local_attention"]:
+                        rope_cache = RelPETypeToClass[relpe_type](
+                            model_config_dict["max_position_embeddings"], #args.max_seq_length
+                            model_config_dict["hidden_size"] // model_config_dict["num_attention_heads"],
+                            num_heads=model_config_dict["num_attention_heads"]
+                        )
+                    else:
+                        rope_cache = RelPETypeToClass[relpe_type](
+                            model_config_dict["max_position_embeddings"], #args.max_seq_length
+                            model_config_dict["hidden_size"] // model_config_dict["num_attention_heads"],
+                            num_heads=None
+                        )
+                    self.rope_caches.append(rope_cache)
+
                     layer_class = LAYER_TYPE2CLASS[layer_type]
                     module = layer_class(layer_config)
                     modules.append(module)
@@ -895,8 +915,8 @@ class BertEncoder(nn.Module):
                 output_all_encoded_layers=True, **kwargs):
 
         all_encoder_layers = []
-        for layer_module in self.layer:
-            hidden_states = layer_module(hidden_states, attention_mask=attention_mask, rope_cache=self.rope_cache, **kwargs)
+        for i, layer_module in enumerate(self.layer):
+            hidden_states = layer_module(hidden_states, attention_mask=attention_mask, rope_cache=self.rope_caches[i], **kwargs)
             if output_all_encoded_layers:
                 all_encoder_layers.append(hidden_states)
         if not output_all_encoded_layers:
