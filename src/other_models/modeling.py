@@ -916,6 +916,10 @@ class BertEncoder(nn.Module):
 
         all_encoder_layers = []
         for i, layer_module in enumerate(self.layer):
+            hidden_states = layer_module(
+                hidden_states, attention_mask=attention_mask,
+                 rope_cache= self.rope_caches[i] if hasattr(self, "rope_caches") else self.rope_cache,
+                  **kwargs) 
             hidden_states = layer_module(hidden_states, attention_mask=attention_mask, rope_cache=self.rope_caches[i], **kwargs)
             if output_all_encoded_layers:
                 all_encoder_layers.append(hidden_states)

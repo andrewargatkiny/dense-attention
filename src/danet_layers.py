@@ -91,17 +91,21 @@ class DANetLayerForMixing(nn.Module):
         super(DANetLayerForMixing, self).__init__()
         if config.locality == "local":
             config.local_scheme = "l"
-            config.layer_number = 0
-            self.danet_layer = DANetLayerWithLocalAttention(config)
+            layer_number = 0
+            self.danet_layer = DANetLayerWithLocalAttention(config, layer_number = layer_number)
         elif config.locality == "global":
             config.local_scheme = "g"
-            config.layer_number = 0
-            self.danet_layer = DANetLayer(config)
+            layer_number = 0
+            self.danet_layer = DANetLayer(config, layer_number=layer_number)
         elif config.locality == "shifted_local":
             config.local_scheme = "sl"
-            config.layer_number = 0
-
-            self.danet_layer = DANetLayerWithLocalAttention(config)
+            layer_number = 0
+            self.danet_layer = DANetLayerWithLocalAttention(config, layer_number=layer_number)
+        elif config.locality == "sliding_window":
+            config.local_scheme = "sw"
+            layer_number = 0
+            self.danet_layer = DANetLayerWithLocalAttention(config, layer_number=layer_number)
+        
     def forward(self, hidden_states, attention_mask, rope_cache=None):
         return self.danet_layer(hidden_states, attention_mask, rope_cache)
 
