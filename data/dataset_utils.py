@@ -258,7 +258,6 @@ def read_chunk_from_file(path: str, local_offset: int, take: int) -> List[Dict]:
             skip = 0
             if remaining <= 0:
                 break
-
         return result
 
     result = []
@@ -286,7 +285,7 @@ def read_sharded_across_files(files: List[str],
     shard_start = shard_size * global_rank
     shard_end = min(total_len, shard_start + shard_size)
 
-    start = min(shard_start + offset, shard_end)
+    start = shard_start + offset
     end = min(start + chunk_size, shard_end)
 
     if start >= end:
@@ -357,7 +356,6 @@ def load_local_datasets(dataset_configs: List[dict], seed: Optional[int] = None)
         data_chunk = apply_filters(data_chunk, params)
         chunks_with_weights.append((data_chunk, params.dataset_weight))
 
-    # Если один источник
     if len(chunks_with_weights) == 1:
         return chunks_with_weights[0][0][:params_list[0].chunk_size]
 

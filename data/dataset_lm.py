@@ -487,17 +487,18 @@ class BertOnlyMLMDataset(Dataset):
             all_sentences = materialize_data(ds)
             del ds
         elif "local_sources" in dataset_config:
-            print(time.ctime(), f"Started loading data from local datasets")
-            eos_token = self.tokenizer.eos_token
-
-            def strip_add_eos_tok(example):
-                example["text"] = example["text"].strip() + eos_token
+            for source in dataset_config["local_sources"]:
+                print(time.ctime(), f"Started loading data from Local datasets"
+                                    f"{source['path']} dataset, "
+                                    f"offset {source['offset']}")
+            ds = load_local_datasets(dataset_config["local_sources"], seed=self.seed)
+            sep_token = self.tokenizer.sep_token
+            def add_sep_tok(example):
+                example["text"] = example["text"] + sep_token
                 return example
-
-            data = load_local_datasets(dataset_config["local_sources"], seed=self.seed)
-            data = [strip_add_eos_tok(ex) for ex in data]
-            all_sentences = [ex["text"] for ex in data if "text" in ex]
-            del data
+            ds = [add_sep_tok(ex) for ex in ds]
+            all_sentences = [ex["text"] for ex in ds if "text" in ex]
+            del ds
         else:
             file_path = os.path.join(base_dir, dataset_config["input_file"])
             print(time.ctime(), f"Started Building documents from {file_path}")
@@ -632,16 +633,17 @@ class GPTPretrainingDataset(Dataset):
             del ds
             base_name = f"offset_{dataset_config['hf_sources'][0].get('offset', 0):012}"
         elif "local_sources" in dataset_config:
-            print(time.ctime(), f"Started loading data from local datasets")
+            for source in dataset_config["local_sources"]:
+                print(time.ctime(), f"Started loading data from Local_sources "
+                                    f"{source['path']} dataset, "
+                                    f"offset {source['offset']}")
+            ds = load_local_datasets(dataset_config["local_sources"], seed=self.seed)
             eos_token = self.tokenizer.eos_token
-
             def strip_add_eos_tok(example):
                 example["text"] = example["text"].strip() + eos_token
                 return example
-
-            data = load_local_datasets(dataset_config["local_sources"], seed=self.seed)
-            data = [strip_add_eos_tok(ex) for ex in data]
-            all_sentences = [ex["text"] for ex in data if "text" in ex]
+            ds = [strip_add_eos_tok(ex) for ex in ds]
+            all_sentences = [ex["text"] for ex in ds if "text" in ex]
             del data
         else:
             file_path = os.path.join(base_dir, dataset_config["input_file"])
