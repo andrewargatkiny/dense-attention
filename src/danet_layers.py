@@ -82,6 +82,30 @@ class DANetLayerWithLocalAttention(nn.Module):
         hidden_states = hidden_states + prev_hidden_states
         return hidden_states
 
+
+class DANetLayerForMixing(nn.Module):
+    """
+    Wrapper over DANetLayer and DANetLayerWithLocalAttention for compatibility with new style of layers modeling.
+    """
+    def __init__(self, config: DANetLayerConfig):
+        super(DANetLayerForMixing, self).__init__()
+        if config.locality == "local":
+            config.local_scheme = "l"
+            config.layer_number = 0
+            self.danet_layer = DANetLayerWithLocalAttention(config)
+        elif config.locality == "global":
+            config.local_scheme = "g"
+            config.layer_number = 0
+            self.danet_layer = DANetLayer(config)
+        elif config.locality == "shifted_local":
+            config.local_scheme = "sl"
+            config.layer_number = 0
+
+            self.danet_layer = DANetLayerWithLocalAttention(config)
+    def forward(self, hidden_states, attention_mask, rope_cache=None):
+        return self.danet_layer(hidden_states, attention_mask, rope_cache)
+
+
 class TransformerLayer(nn.Module):
     code_to_kernel = {
         'softmax': 'softmax',

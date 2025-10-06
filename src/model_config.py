@@ -266,6 +266,7 @@ class DANetLayerConfig(object):
                  hybrid=False,
                  transformer_heads=None,
                  attn_proj_biases=False,
+                 locality="global",
                  **kwargs
                  ):
         """Constructs ModelConfig.
@@ -396,6 +397,7 @@ class DANetLayerConfig(object):
         self.hybrid = hybrid
         self.transformer_heads = transformer_heads
         self.attn_proj_biases = attn_proj_biases
+        self.locality = locality
 
     @classmethod
     def from_json_file(cls, json_file):

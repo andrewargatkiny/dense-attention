@@ -19,7 +19,7 @@
         "pooler_no_dense": true,
         "window_size": 256,
 
-        "layers_scheme": "tr_danet",
+        "layers_scheme": "tr_danetg_danetl",
         "layers": [
             {
                 "hidden_size": 128,
@@ -36,9 +36,22 @@
                 "hidden_size": 128,
                 "num_hidden_layers": 6,
                 "num_attention_heads": 8,
-                "layer_name": "danet",
+                "layer_name": "danetg",
                 "layer_type": "danet",
                 "pre_attn_ln_type": "max_norm",
+                "locality": "global",
+                "post_attn_ln_type": "max_norm",
+                "attention_complexity": "auto",
+                "swiglu_ffn": false
+            },
+            {
+                "hidden_size": 128,
+                "num_hidden_layers": 6,
+                "num_attention_heads": 4,
+                "layer_name": "danetl",
+                "layer_type": "danet",
+                "pre_attn_ln_type": "max_norm",
+                "locality": "local",
                 "post_attn_ln_type": "max_norm",
                 "attention_complexity": "auto",
                 "swiglu_ffn": false
