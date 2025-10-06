@@ -14,8 +14,9 @@
         "type_vocab_size": 2,
         "initializer_range": 0.02,
         "pos_emb_type": "relpe",
-        "relpe_type": "rope",
+        "relpe_type": "dummy",
         "window_size": 256,
+        "intermediate_size":512,
 
         "layers_scheme": "tr_swa",
         "layers": [
@@ -47,6 +48,7 @@
                 "pre_attn_ln_type": "default",
                 "post_attn_ln_type": "default",
                 "attention_kernel": "linear",
+                "feature_map": "1_plus_elu",
                 "attn_proj_biases": true
             }
         ]

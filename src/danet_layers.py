@@ -24,7 +24,8 @@ class DANetLayer(nn.Module):
         
         # Local, layer-specific initialization: duplicate the relevant parts
         # from the global initializer, without relying on outer apply().
-        self._init_weights(config)
+        if config.locality is not None:
+            self._init_weights(config)
     
     def _init_weights(self, config):
         """Initialize weights for all submodules in the layer."""
@@ -95,7 +96,8 @@ class DANetLayerWithLocalAttention(nn.Module):
         
         # Local, layer-specific initialization: duplicate the relevant parts
         # from the global initializer, without relying on outer apply().
-        self._init_weights(config)
+        if config.locality is not None:
+            self._init_weights(config)
     
     def _init_weights(self, config):
         """Initialize weights for all submodules in the layer."""
