@@ -905,7 +905,9 @@ def run(args, model, optimizer, start_epoch):
                     )
                     success = True
                 except Exception as ex:
-                    print(ex)
+                    TIME_TO_SLEEP = 60
+                    print(ex, f" Retrying in {TIME_TO_SLEEP} s.")
+                    time.sleep(TIME_TO_SLEEP)
             manage_checkpoints(args.saved_model_path, args)
                     
 
