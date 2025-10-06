@@ -1,9 +1,10 @@
 import copy
+import math
 import warnings
 
 from torch import nn
 
-from src.other_models.modeling import BertAttention, BertLocalAttention, BertShiftedLocalAttention
+from src.other_models.modeling import BertAttention, BertLocalAttention, BertShiftedLocalAttention, BertLayerNorm
 from src.activations import StandardLayerNorm, Activation2Class
 from src.dense_attention import DenseAttention
 from src.expanded_ffn import ExpandedFFN, SwiGLU
@@ -20,6 +21,30 @@ class DANetLayer(nn.Module):
         self.attention = DenseAttention(config, layer_number=layer_number)
         self.ffn = SwiGLU(config) if config.swiglu_ffn else ExpandedFFN(config)
         self.ffn_activation = Activation2Class[config.post_attn_ln_type](config.hidden_size)
+        
+        # Local, layer-specific initialization: duplicate the relevant parts
+        # from the global initializer, without relying on outer apply().
+        self._init_weights(config)
+    
+    def _init_weights(self, config):
+        """Initialize weights for all submodules in the layer."""
+        num_layers = config.num_hidden_layers
+        base_std = config.initializer_range
+
+        for module in self.modules():
+            # Initialize linear layers
+            if isinstance(module, nn.Linear):
+                std = base_std
+                # Match residual path scaling used previously via 'bert_output_layer'
+                if hasattr(module, 'bert_output_layer'):
+                    std = base_std / math.sqrt(2.0 * num_layers)
+                module.weight.data.normal_(mean=0.0, std=std)
+                if module.bias is not None:
+                    module.bias.data.zero_()
+            # Initialize layer norms
+            elif isinstance(module, BertLayerNorm):
+                module.bias.data.zero_()
+                module.weight.data.fill_(1.0)
 
     def forward(self, hidden_states, attention_mask, rope_cache=None):
         if attention_mask.dim() == 4:
@@ -67,6 +92,30 @@ class DANetLayerWithLocalAttention(nn.Module):
         )
         self.ffn = SwiGLU(config) if config.swiglu_ffn else ExpandedFFN(config)
         self.ffn_activation = Activation2Class[config.post_attn_ln_type](config.hidden_size)
+        
+        # Local, layer-specific initialization: duplicate the relevant parts
+        # from the global initializer, without relying on outer apply().
+        self._init_weights(config)
+    
+    def _init_weights(self, config):
+        """Initialize weights for all submodules in the layer."""
+        num_layers = config.num_hidden_layers
+        base_std = config.initializer_range
+
+        for module in self.modules():
+            # Initialize linear layers
+            if isinstance(module, nn.Linear):
+                std = base_std
+                # Match residual path scaling used previously via 'bert_output_layer'
+                if hasattr(module, 'bert_output_layer'):
+                    std = base_std / math.sqrt(2.0 * num_layers)
+                module.weight.data.normal_(mean=0.0, std=std)
+                if module.bias is not None:
+                    module.bias.data.zero_()
+            # Initialize layer norms
+            elif isinstance(module, BertLayerNorm):
+                module.bias.data.zero_()
+                module.weight.data.fill_(1.0)
 
     def forward(self, hidden_states, attention_mask, rope_cache=None):
         if attention_mask.dim() == 4:
