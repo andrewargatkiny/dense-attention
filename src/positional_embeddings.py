@@ -103,9 +103,13 @@ class RoPE(RelPEBase):
         # Create position indexes `[0, 1, ..., seq_len - 1]`
         seq_idx = torch.arange(seq_len)
 
+
         # Calculate the product of position index and $\theta_i$
         angles = torch.outer(seq_idx, theta).repeat(1, 2).float()
-
+        self.rotate_half = self.rotate_half_classic
+        if num_heads is not None and num_heads > 1:
+            angles = torch.outer(seq_idx, theta).repeat_interleave(2, 1).float()
+            self.rotate_half = self.rotate_half_fused_dims
         cache_cos = torch.cos(angles).unsqueeze(0)
         cache_sin = torch.sin(angles).unsqueeze(0)
         if num_heads is None:
@@ -120,13 +124,24 @@ class RoPE(RelPEBase):
         self.register_buffer("cache_sin", cache_sin, persistent=False)
 
     @staticmethod
-    def rotate_half(x):
+    def rotate_half_classic(x):
         """Rotates half the hidden dims of the input.
         From https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py#L84
         """
         x1 = x[..., : x.shape[-1] // 2]
         x2 = x[..., x.shape[-1] // 2:]
         return torch.cat((-x2, x1), dim=-1)
+
+    @staticmethod
+    def rotate_half_fused_dims(x):
+        """A version of the rotate half function for the case where head and
+        embedding dimensions are not decoupled.
+        """
+        # x = (x0, x1, x2, x3, ...), y = (-x1, x0, -x3, x2, ...)
+        y = torch.empty_like(x)
+        y[..., 0::2] = - x[..., 1::2]
+        y[..., 1::2] = x[..., 0::2]
+        return y
 
     def apply_relpe(self, x: torch.Tensor) -> torch.Tensor:
         # truncate to support variable sizes
