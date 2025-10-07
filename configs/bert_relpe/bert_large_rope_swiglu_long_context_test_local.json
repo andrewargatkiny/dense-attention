@@ -35,32 +35,43 @@
             "local_sources": [
                 {
                     "path": "data/bert_mlm/HuggingFaceTB",
-                    "chunk_size": 25000,
-                    "dataset_weight": 1
+                    "chunk_size": 10000,
+                    "dataset_weight": 0.7
+                },
+                {
+                    "path": "data/bert_mlm/codeparrot",
+                    "chunk_size": 5000,
+                    "dataset_weight": 0.3
                 }
             ],
             "shuffle": true,
             "seed": 1,
             "max_seq_length": 1024,
-            "total_samples": 32768
+            "total_samples": 16384
         },
         "validation": {
             "local_sources": [
                 {
                     "path": "data/bert_mlm/HuggingFaceTB",
                     "offset": 30000,
-                    "chunk_size": 15000,
-                    "dataset_weight": 1
+                    "chunk_size": 7000,
+                    "dataset_weight": 0.7
+                },
+                {
+                    "path": "data/bert_mlm/codeparrot",
+                    "offset": 30000,
+                    "chunk_size": 300,
+                    "dataset_weight": 0.3
                 }
             ],
             "seed": 1,
             "max_seq_length": 1024,
-            "total_samples": 20000
+            "total_samples": 10000
         },
         "test": {
-            "input_file": "HuggingFaceTB/dclm-edu",
+            "input_file": "data/bert_mlm/HuggingFaceTB",
             "max_seq_length": 1024,
-            "total_samples": 20000
+            "total_samples": 6000
         }
     },
     "training": {
