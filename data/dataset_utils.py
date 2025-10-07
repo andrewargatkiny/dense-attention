@@ -5,12 +5,11 @@ import gzip
 import json
 import random
 import time
-import pandas as pd
 import pyarrow.parquet as pq
 import zstandard as zstd
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
-from typing import List, Optional, Dict, Iterator, Any, Tuple
+from typing import List, Optional, Dict
 from itertools import islice
 
 import datasets
@@ -190,6 +189,41 @@ def materialize_data(ds: datasets.IterableDataset) -> List[str]:
 
 @dataclass
 class LocalDatasetParams:
+    """
+    Configuration for loading a local dataset from files, potentially for interleaving.
+
+    This dataclass holds all parameters needed to load a portion of data from 
+    local files. Multiple instances of this class can be used to specify several
+    datasets that are then interleaved into one, using the 'dataset_weight'
+    parameter of each configuration.
+
+    Supports various file formats including JSON, JSONL, gzipped files, zstd-compressed
+    files, and Parquet files. Handles sharding for distributed training scenarios.
+
+    Attributes:
+        path (str): Path to the dataset file or directory. If directory, all files
+            in it will be used as shards of the dataset.
+        chunk_size (int): The number of records to load from this dataset.
+        offset (int, optional): The number of records to skip from the start
+            of the sharded dataset. Defaults to 0.
+        world_size (int, optional): Splits the dataset into this number of shards,
+            which is useful for distributed training. Defaults to 1.
+        global_rank (int, optional): The shard of the dataset with this index
+            is used. Defaults to 0.
+        dataset_weight (float, optional): The weight for interleaving this
+            dataset with others. Defaults to 1.0.
+        filter_geq_column (Optional[str], optional): Column to apply a "greater
+            than or equal to" filter on. If "text", filters by word count.
+            Defaults to None.
+        filter_geq_value (int, optional): The value for the "geq" filter.
+            Defaults to 0.
+        filter_leq_column (Optional[str], optional): Column to apply a "less
+            than or equal to" filter on. If "text", filters by word count.
+            Defaults to None.
+        filter_leq_value (int, optional): The value for the "leq" filter.
+            Defaults to 2**64.
+    """
+    
     path: str
     chunk_size: int
     offset: int = 0
@@ -229,6 +263,15 @@ def get_file_len(path: str) -> int:
 
 
 def read_chunk_from_file(path: str, local_offset: int, take: int) -> List[Dict]:
+    """Read a chunk of data from a file starting at specified offset.
+    Args:
+        path: Path to the file
+        local_offset: Starting position within the file
+        take: Number of items to read
+        
+    Returns:
+        List[Dict]: List of data records as dictionaries
+    """
     if take <= 0:
         return []
 
@@ -279,8 +322,19 @@ def read_sharded_across_files(files: List[str],
                               global_rank: int,
                               chunk_size: int,
                               offset: int) -> List[Dict]:
+    """Read data sharded across multiple files for distributed training.
+    Args:
+        files: List of file paths to read from
+        world_size: Total number of shards
+        global_rank: Rank of current shard
+        chunk_size: Size of chunk to read
+        offset: Offset within the shard
+        
+    Returns:
+        List[Dict]: List of data records from the assigned shard
+    """
     total_len = sum(get_file_len(f) for f in files)
-    shard_size = (total_len + world_size - 1) // world_size  # ceil division
+    shard_size = (total_len + world_size - 1) // world_size
 
     shard_start = shard_size * global_rank
     shard_end = min(total_len, shard_start + shard_size)
@@ -333,6 +387,18 @@ def apply_filters(data: List[Dict], params: LocalDatasetParams) -> List[Dict]:
     return data
 
 def load_local_datasets(dataset_configs: List[dict], seed: Optional[int] = None) -> List[Dict]:
+    """
+    Loads data from multiple sources, applies filters, and combines
+    using weighted random sampling. Supports both single file and
+    directory inputs.
+    Args:
+        dataset_configs: List of dataset configuration dictionaries
+        seed: Random seed for reproducible dataset mixing (optional)
+        
+    Returns:
+        List[Dict]: Combined dataset with weighted sampling, or single 
+        dataset if only one provided 
+    """
     params_list = [LocalDatasetParams(**cfg) for cfg in dataset_configs]
     chunks_with_weights = []
 
@@ -367,22 +433,15 @@ def load_local_datasets(dataset_configs: List[dict], seed: Optional[int] = None)
     iters = [iter(d) for d in datasets]
 
     combined = []
-    target_size = params_list[0].chunk_size
-
-    while len(combined) < target_size and datasets:
+    while datasets:
         idx = random.choices(range(len(datasets)), weights=weights, k=1)[0]
         try:
             ex = next(iters[idx])
             combined.append(ex)
         except StopIteration:
-            datasets.pop(idx)
-            iters.pop(idx)
-            weights.pop(idx)
-            if not datasets:
-                break
-            weights = [w / sum(weights) for w in weights]
-
-    return combined[:target_size]
+            break
+        
+    return combined
 
 class ShardedDatasetWrapper:
     """For multi-file datasets and distributed training. Each data file should
