@@ -140,10 +140,16 @@ class DenseAttention(nn.Module):
                                  f"{self.relpe_scheme} conform to acceptable codes "
                                  f"{relpe_keys}.")
 
+        # Set RelPE functions which are used in `_forward_chunked`. They can be
+        # local, global or dummy, depending on `local_relpe` and `relpe_scheme`
+        # config settings.
         self.pre_apply_relpe = self._apply_dummy_relpe
         self.apply_q_relpe = self._apply_dummy_relpe
         self.apply_k_relpe = self._apply_dummy_relpe
         self.apply_v_relpe = self._apply_dummy_relpe
+        # Set RelPE functions which are used in `forward_global`. They are
+        # guaranteed to be either global or dummy, depending on the
+        # `relpe_scheme`.
         self.pre_apply_global_relpe = self._apply_dummy_relpe
         self.apply_q_global_relpe = self._apply_dummy_relpe
         self.apply_k_global_relpe = self._apply_dummy_relpe
