@@ -1,14 +1,14 @@
-from ..danet_layers import DANetLayerForMixing
-from ..model_config import DANetLayerConfig
-from ..other_models.modeling import BertLayer, TransformerLayerConfig
+from ..danet_layers import DANetLayerWithLocalAttention
+from ..model_config import ModelConfig
+from ..other_models.transformers import BertLayer, TransformerLayerConfig
 
 
-LAYER_TYPE2CLASS = {
-    'danet': DANetLayerForMixing,
+LayerTypeToClass = {
+    'danet': DANetLayerWithLocalAttention,
     'transformer': BertLayer,
 }
 
-LAYER_TYPE2CONFIG_CLASS = {
+LayerTypeToConfigClass = {
     'transformer': TransformerLayerConfig,
-    'danet': DANetLayerConfig,
+    'danet': ModelConfig,
 }

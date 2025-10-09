@@ -8,14 +8,14 @@ from src.other_models.modeling import BertAttention, BertLocalAttention, BertShi
 from src.activations import StandardLayerNorm, Activation2Class
 from src.dense_attention import DenseAttention
 from src.expanded_ffn import ExpandedFFN, SwiGLU
-from src.model_config import DANetLayerConfig
+from src.model_config import ModelConfig
 from src.positional_embeddings import RoPE
 
 
 class DANetLayer(nn.Module):
     """Basic DenseAttention Network layer which can be put into a model as a
     replacement to a standard Transformer block."""
-    def __init__(self, config: DANetLayerConfig, layer_number: int=0):
+    def __init__(self, config: ModelConfig, layer_number: int=0):
         super(DANetLayer, self).__init__()
         self.activation = Activation2Class[config.pre_attn_ln_type](config.hidden_size)
         self.attention = DenseAttention(config, layer_number=layer_number)
@@ -33,19 +33,16 @@ class DANetLayer(nn.Module):
         base_std = config.initializer_range
 
         for module in self.modules():
-            # Initialize linear layers
-            if isinstance(module, nn.Linear):
-                std = base_std
-                # Match residual path scaling used previously via 'bert_output_layer'
-                if hasattr(module, 'bert_output_layer'):
-                    std = base_std / math.sqrt(2.0 * num_layers)
-                module.weight.data.normal_(mean=0.0, std=std)
+            """ Initialize the weights.
+            """ 
+            std = self.config.initializer_range  # / math.sqrt(3)
+            if isinstance(module, nn.Embedding):
+                module.weight.data.normal_(mean=0, std=std)
+            # if isinstance(module, nn.Linear):
+            elif isinstance(module, nn.Linear):
+                module.weight.data.uniform_(-std, std)
                 if module.bias is not None:
                     module.bias.data.zero_()
-            # Initialize layer norms
-            elif isinstance(module, BertLayerNorm):
-                module.bias.data.zero_()
-                module.weight.data.fill_(1.0)
 
     def forward(self, hidden_states, attention_mask, rope_cache=None):
         if attention_mask.dim() == 4:
@@ -68,7 +65,7 @@ class DANetLayerWithLocalAttention(nn.Module):
         'g': 'global', 'l': 'local', 'sl': 'shifted_local',
         'sw': 'sliding_window', 'softmax': 'softmax'
     }
-    def __init__(self, config: DANetLayerConfig, layer_number: int=0):
+    def __init__(self, config: ModelConfig, layer_number: int=0):
         super(DANetLayerWithLocalAttention, self).__init__()
         self.activation = Activation2Class[config.pre_attn_ln_type](config.hidden_size)
         self.window_size = config.window_size
@@ -105,19 +102,16 @@ class DANetLayerWithLocalAttention(nn.Module):
         base_std = config.initializer_range
 
         for module in self.modules():
-            # Initialize linear layers
-            if isinstance(module, nn.Linear):
-                std = base_std
-                # Match residual path scaling used previously via 'bert_output_layer'
-                if hasattr(module, 'bert_output_layer'):
-                    std = base_std / math.sqrt(2.0 * num_layers)
-                module.weight.data.normal_(mean=0.0, std=std)
+            """ Initialize the weights.
+            """
+            std = self.config.initializer_range  # / math.sqrt(3)
+            if isinstance(module, nn.Embedding):
+                module.weight.data.normal_(mean=0, std=std)
+            # if isinstance(module, nn.Linear):
+            elif isinstance(module, nn.Linear):
+                module.weight.data.uniform_(-std, std)
                 if module.bias is not None:
                     module.bias.data.zero_()
-            # Initialize layer norms
-            elif isinstance(module, BertLayerNorm):
-                module.bias.data.zero_()
-                module.weight.data.fill_(1.0)
 
     def forward(self, hidden_states, attention_mask, rope_cache=None):
         if attention_mask.dim() == 4:
@@ -134,33 +128,6 @@ class DANetLayerWithLocalAttention(nn.Module):
         return hidden_states
 
 
-class DANetLayerForMixing(nn.Module):
-    """
-    Wrapper over DANetLayer and DANetLayerWithLocalAttention for compatibility with new style of layers modeling.
-    """
-    def __init__(self, config: DANetLayerConfig):
-        super(DANetLayerForMixing, self).__init__()
-        if config.locality == "local":
-            config.local_scheme = "l"
-            layer_number = 0
-            self.danet_layer = DANetLayerWithLocalAttention(config, layer_number = layer_number)
-        elif config.locality == "global":
-            config.local_scheme = "g"
-            layer_number = 0
-            self.danet_layer = DANetLayer(config, layer_number=layer_number)
-        elif config.locality == "shifted_local":
-            config.local_scheme = "sl"
-            layer_number = 0
-            self.danet_layer = DANetLayerWithLocalAttention(config, layer_number=layer_number)
-        elif config.locality == "sliding_window":
-            config.local_scheme = "sw"
-            layer_number = 0
-            self.danet_layer = DANetLayerWithLocalAttention(config, layer_number=layer_number)
-        
-    def forward(self, hidden_states, attention_mask, rope_cache=None):
-        return self.danet_layer(hidden_states, attention_mask, rope_cache)
-
-
 class TransformerLayer(nn.Module):
     code_to_kernel = {
         'softmax': 'softmax',
@@ -174,7 +141,7 @@ class TransformerLayer(nn.Module):
         'l@softmax': BertLocalAttention,
         'sl@softmax': BertShiftedLocalAttention
     }
-    def __init__(self, config: DANetLayerConfig, layer_number: int=0):
+    def __init__(self, config: ModelConfig, layer_number: int=0):
         super(TransformerLayer, self).__init__()
         config = copy.deepcopy(config)
         self.window_size = config.window_size
