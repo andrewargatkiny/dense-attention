@@ -1,10 +1,9 @@
 import copy
-import math
 import warnings
 
 from torch import nn
 
-from src.other_models.modeling import BertAttention, BertLocalAttention, BertShiftedLocalAttention, BertLayerNorm
+from src.other_models.modeling import BertAttention, BertLocalAttention, BertShiftedLocalAttention
 from src.activations import StandardLayerNorm, Activation2Class
 from src.dense_attention import DenseAttention
 from src.expanded_ffn import ExpandedFFN, SwiGLU
@@ -21,33 +20,8 @@ class DANetLayer(nn.Module):
         self.attention = DenseAttention(config, layer_number=layer_number)
         self.ffn = SwiGLU(config) if config.swiglu_ffn else ExpandedFFN(config)
         self.ffn_activation = Activation2Class[config.post_attn_ln_type](config.hidden_size)
-        
-        # Local, layer-specific initialization: duplicate the relevant parts
-        # from the global initializer, without relying on outer apply().
-        if config.locality is not None:
-            self._init_weights(config)
-    
-    def _init_weights(self, config):
-        """Initialize weights for all submodules in the layer."""
-        num_layers = config.num_hidden_layers
-        base_std = config.initializer_range
-
-        for module in self.modules():
-            """ Initialize the weights.
-            """ 
-            std = self.config.initializer_range  # / math.sqrt(3)
-            if isinstance(module, nn.Embedding):
-                module.weight.data.normal_(mean=0, std=std)
-            # if isinstance(module, nn.Linear):
-            elif isinstance(module, nn.Linear):
-                module.weight.data.uniform_(-std, std)
-                if module.bias is not None:
-                    module.bias.data.zero_()
 
     def forward(self, hidden_states, attention_mask, rope_cache=None):
-        if attention_mask.dim() == 4:
-            attention_mask = (attention_mask.squeeze(1).squeeze(1) > -1).to(hidden_states.dtype).unsqueeze(-1)
-       
         prev_hidden_states = hidden_states
         hidden_states = self.activation(hidden_states)
         hidden_states = hidden_states * attention_mask
@@ -90,33 +64,8 @@ class DANetLayerWithLocalAttention(nn.Module):
         )
         self.ffn = SwiGLU(config) if config.swiglu_ffn else ExpandedFFN(config)
         self.ffn_activation = Activation2Class[config.post_attn_ln_type](config.hidden_size)
-        
-        # Local, layer-specific initialization: duplicate the relevant parts
-        # from the global initializer, without relying on outer apply().
-        if config.locality is not None:
-            self._init_weights(config)
-    
-    def _init_weights(self, config):
-        """Initialize weights for all submodules in the layer."""
-        num_layers = config.num_hidden_layers
-        base_std = config.initializer_range
-
-        for module in self.modules():
-            """ Initialize the weights.
-            """
-            std = self.config.initializer_range  # / math.sqrt(3)
-            if isinstance(module, nn.Embedding):
-                module.weight.data.normal_(mean=0, std=std)
-            # if isinstance(module, nn.Linear):
-            elif isinstance(module, nn.Linear):
-                module.weight.data.uniform_(-std, std)
-                if module.bias is not None:
-                    module.bias.data.zero_()
 
     def forward(self, hidden_states, attention_mask, rope_cache=None):
-        if attention_mask.dim() == 4:
-            attention_mask = (attention_mask.squeeze(1).squeeze(1) > -1).to(hidden_states.dtype).unsqueeze(-1)
-       
         prev_hidden_states = hidden_states
         attention_mask = self.prepare_mask_fn(attention_mask)
         hidden_states = self.activation(hidden_states)
@@ -126,7 +75,6 @@ class DANetLayerWithLocalAttention(nn.Module):
         hidden_states = self.ffn_activation(hidden_states)
         hidden_states = hidden_states + prev_hidden_states
         return hidden_states
-
 
 class TransformerLayer(nn.Module):
     code_to_kernel = {
@@ -169,3 +117,22 @@ class TransformerLayer(nn.Module):
         layer_output = self.ffn(intermediate_layer_norm)
         return layer_output + intermediate_input
 
+
+class DANetLayerWrapper(nn.Module):
+    def __init__(self, config: ModelConfig):
+        super(DANetLayerWrapper, self).__init__()
+        self.config = config
+        self.layer = DANetLayerWithLocalAttention(config)
+        self.apply(self.init_bert_weights)
+
+    def init_bert_weights(self, module):
+        std = self.config.initializer_range
+        if isinstance(module, nn.Embedding):
+            module.weight.data.normal_(mean=0, std=std)
+        elif isinstance(module, nn.Linear):
+            module.weight.data.uniform_(-std, std)
+            if module.bias is not None:
+                module.bias.data.zero_()
+
+    def forward(self, hidden_states, attention_mask, rope_cache=None):
+        return self.layer(hidden_states, attention_mask, rope_cache)
