@@ -3,7 +3,7 @@ import warnings
 
 from torch import nn
 
-from src.other_models.modeling import BertAttention, BertLocalAttention, BertShiftedLocalAttention
+from src.other_models.transformers import BertAttention, BertLocalAttention, BertShiftedLocalAttention
 from src.activations import StandardLayerNorm, Activation2Class
 from src.dense_attention import DenseAttention
 from src.expanded_ffn import ExpandedFFN, SwiGLU

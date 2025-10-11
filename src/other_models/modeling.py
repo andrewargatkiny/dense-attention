@@ -296,7 +296,7 @@ class BertEncoder(nn.Module):
                 attention_mask /
                 attention_mask.sum(axis=-1, keepdim=True).pow(1. / 3)
             ).to(dtype)
-            if layer_config["use_local_attention"]:
+            if layer_config["local_scheme"] in ["l", "sl"]:
                 local_attention_mask = (
                         attention_mask / layer_config["window_size"] ** (1. / 3)
                 ).to(dtype)
@@ -304,7 +304,7 @@ class BertEncoder(nn.Module):
                     local_attention_mask,
                     extended_attention_mask
                 )
-                return extended_attention_mask
+            return extended_attention_mask
         else:
             if attention_mask is None:
                 attention_mask = torch.ones_like(hidden_states)
