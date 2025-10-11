@@ -143,7 +143,7 @@ class TransformerConfig(object):
             apply_relpe_after: For linear attentions, determines whether Relative
                 Positional Encoding (RELPE) is applied after the feature map (if true)
                 or before the linear attention kernel (if false).
-            layer_scheme: Defines the sequence and repetition of layers within the encoder.
+            layers_scheme: Defines the sequence and repetition of layers within the encoder.
                 This should be a string of layer names separated by underscores
                 (e.g., 'attention_ffn_attention'). Each name must correspond to a unique layer_name
                 key in one of the configuration dictionaries provided in the layers parameter.

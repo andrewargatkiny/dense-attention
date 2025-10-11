@@ -8,7 +8,7 @@ LayerTypeToClass = {
     'transformer': BertLayer,
 }
 
-LayerTypeToConfigClass = {
+LayerConfigToClass = {
     'transformer': TransformerLayerConfig,
     'danet': ModelConfig,
 }
