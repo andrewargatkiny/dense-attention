@@ -40,7 +40,7 @@ from src.positional_embeddings import PositionalEmbeddingsTypes, SinusoidalPosit
 from .attention_kernels import SoftmaxAttention, LinearAttention, SlidingWindowAttention, PowerAttention
 from ..activations import Activation2Class
 from .transformers import ACT2FN, BertLayer, BertSelfAttention, BertSelfLocalAttention, BertSelfShiftedLocalAttention, TransformerConfig, BertLayerNorm
-from .layers_registry import LayerTypeToClass, LayerTypeToConfigClass
+from .layers_registry import LayerTypeToClass, LayerConfigToClass
 
 logger = logging.getLogger(__name__)
 
@@ -162,7 +162,7 @@ class BertEncoder(nn.Module):
                     layer_config_dict = name_to_config[layer_name]
                     layer_type = layer_config_dict["layer_type"]
                     
-                    config_class = LayerTypeToConfigClass[layer_type]
+                    config_class = LayerConfigToClass[layer_type]
                     final_layer_params = layer_config_dict.copy()
                     init_signature = inspect.signature(config_class.__init__)
                     init_params = init_signature.parameters
