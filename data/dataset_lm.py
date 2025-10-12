@@ -19,7 +19,7 @@ from collections import deque, namedtuple
 from tqdm import tqdm
 from transformers import BertTokenizerFast, AutoTokenizer
 
-from data.dataset_utils import load_hf_datasets, materialize_data
+from data.dataset_utils import load_datasets, materialize_data
 
 
 def BertPretrainingDatasetFactory(base_dir, dataset_config, args=None):
@@ -473,12 +473,12 @@ class BertOnlyMLMDataset(Dataset):
         # Set to False by default for legacy reasons
         self.shuffle = dataset_config.get("shuffle", False)
         self.pad_samples = dataset_config.get("pad_samples", False)
-        if "hf_sources" in dataset_config:
-            for source in dataset_config["hf_sources"]:
-                print(time.ctime(), f"Started loading data from HuggingFace "
-                                    f"{source['name']} dataset, "
+        if "sources" in dataset_config:
+            for source in dataset_config["sources"]:
+                print(time.ctime(), f"Started loading data"
+                                    f"{source['name_or_path']} dataset, "
                                     f"offset {source['offset']}")
-            ds = load_hf_datasets(dataset_config["hf_sources"], seed=self.seed)
+            ds = load_datasets(dataset_config["sources"], seed=self.seed)
             sep_token = self.tokenizer.sep_token
             def add_sep_tok(example):
                 example["text"] = example["text"] + sep_token
@@ -605,12 +605,12 @@ class GPTPretrainingDataset(Dataset):
         self.max_seq_len = dataset_config.get("max_seq_length", 2048)
         self.total_samples = dataset_config.get("total_samples", 2**19)
 
-        if "hf_sources" in dataset_config:
-            for source in dataset_config["hf_sources"]:
-                print(time.ctime(), f"Started loading data from HuggingFace "
+        if "sources" in dataset_config:
+            for source in dataset_config["sources"]:
+                print(time.ctime(), f"Started loading data "
                                     f"{source['name']} dataset, "
                                     f"offset {source['offset']}")
-            ds = load_hf_datasets(dataset_config["hf_sources"], seed=self.seed)
+            ds = load_datasets(dataset_config["sources"], seed=self.seed)
             eos_token = self.tokenizer.eos_token
             def strip_add_eos_tok(example):
                 example["text"] = example["text"].strip() + eos_token
@@ -618,7 +618,7 @@ class GPTPretrainingDataset(Dataset):
             ds = ds.map(strip_add_eos_tok)
             all_sentences = materialize_data(ds)
             del ds
-            base_name = f"offset_{dataset_config['hf_sources'][0].get('offset', 0):012}"
+            base_name = f"offset_{dataset_config['sources'][0].get('offset', 0):012}"
         else:
             file_path = os.path.join(base_dir, dataset_config["input_file"])
             base_name, ext = os.path.splitext(file_path)
