@@ -37,16 +37,18 @@ def create_dataloader(train_data, num_workers,
 @dataclass
 class DatasetParams:
     """
-    Configuration for loading a HuggingFace dataset, potentially for interleaving.
+    Configuration for loading a dataset (from the Hugging Face or local files), 
+    potentially for interleaving.
 
     This dataclass holds all parameters needed to load a portion of a single
-    HuggingFace dataset. Multiple instances of this class can be used to specify
-    several datasets that are then interleaved into one, using the 'dataset_weight'
+    dataset. Multiple instances of this class can be used to specify several
+    datasets that are then interleaved into one, using the 'dataset_weight'
     parameter of each configuration.
 
     Attributes:
-        name (str): The name of the dataset on the Hub (e.g.
-            "HuggingFaceFW/fineweb-edu").
+        name_or_path (str): The name of the dataset on the Hub (e.g.
+            "HuggingFaceFW/fineweb-edu") or a local path to dataset files 
+            (e.g. "/data/bert_mlm/fineweb-edu").
         chunk_size (int): The number of records to take after the offset.
         subset (Optional[str], optional): The subset of the dataset (e.g.
             "sample-100BT"). Defaults to None.
@@ -73,7 +75,7 @@ class DatasetParams:
             Defaults to 2**64.
     """
     # Required parameters
-    path_or_name: str
+    name_or_path: str
     chunk_size: int
 
     # Optional parameters with default values
@@ -93,14 +95,14 @@ class DatasetParams:
 def load_datasets(dataset_configs: List[dict],
                      seed: Optional[int] = None) -> datasets.IterableDataset:
     """
-    Loads one or possibly several HuggingFace datasets, specified in
-    `dataset_configs`, in streaming mode and mixes them into one.
+    Loads one or several datasets (from the Hugging Face or local files), 
+    specified in `dataset_configs`, in streaming mode, and mixes them into one.
 
     Args:
-    dataset_configs (List[dict]): A list of HG dataset configurations to load
-        and interleave.
-    seed (Optional[int], optional): An optional seed for the pseudo-random
-        interleaving process. Defaults to None.
+        dataset_configs (List[dict]): A list of dataset configurations (each may
+            refer to either a HF dataset name or a local path) to load and interleave.
+        seed (Optional[int], optional): An optional seed for the pseudo-random
+            interleaving process. Defaults to None.
     """
     dataset_configs = [DatasetParams(**config) for config in dataset_configs]
     if len(dataset_configs) == 1:
@@ -119,15 +121,15 @@ def load_datasets(dataset_configs: List[dict],
 
 def load_hf_dataset(dataset_config: DatasetParams) -> datasets.IterableDataset:
     """
-    Loads a portion of a single HuggingFace dataset in streaming mode using a
-    HFDatasetParams config.
+    Loads a portion of a single dataset (from the Hugging Face or local files)
+    in streaming mode using a DatasetParams config.
 
     Args:
-        dataset_config (HFDatasetParams): Configuration object for the dataset.
+        dataset_config (DatasetParams): Configuration object for the dataset.
     """
     TEXT_COLUMN = "text"
     ds = datasets.load_dataset(
-        dataset_config.path_or_name,
+        dataset_config.name_or_path,
         dataset_config.subset,
         split=dataset_config.split,
         trust_remote_code=dataset_config.trust_remote_code,

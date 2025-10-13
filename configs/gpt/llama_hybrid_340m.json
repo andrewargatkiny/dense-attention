@@ -37,9 +37,9 @@
     },
     "data": {
         "training": {
-            "hf_sources": [
+            "sources": [
                 {
-                    "name": "HuggingFaceFW/fineweb-edu",
+                    "name_or_path": "HuggingFaceFW/fineweb-edu",
                     "subset": "sample-100BT",
                     "split": "train",
                     "chunk_size": 600000
@@ -51,9 +51,9 @@
             "pad_samples": false
         },
         "validation": {
-            "hf_sources": [
+            "sources": [
                 {
-                    "name": "EleutherAI/wikitext_document_level",
+                    "name_or_path": "EleutherAI/wikitext_document_level",
                     "subset": "wikitext-2-raw-v1",
                     "split": "test",
                     "offset": 0,
@@ -66,9 +66,9 @@
             "pad_samples": false
         },
         "test": {
-            "hf_sources": [
+            "sources": [
                 {
-                    "name": "HuggingFaceFW/fineweb-edu",
+                    "name_or_path": "HuggingFaceFW/fineweb-edu",
                     "subset": null,
                     "split": "train",
                     "offset": 10000,

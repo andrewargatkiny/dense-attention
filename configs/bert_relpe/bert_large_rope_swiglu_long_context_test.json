@@ -33,50 +33,50 @@
     },
     "data": {
         "training": {
-            "hf_sources": [
+            "sources": [
                 {
-                    "name_or_path": "data/data1",
+                    "name_or_path": "data/bert_mlm/data1",
                     "split": "train",
-                    "chunk_size": 7000,
+                    "chunk_size": 15000,
                     "dataset_weight": 0.75
                 },
                 {
-                    "name_or_path": "data/data2",
+                    "name_or_path": "data/bert_mlm/data2",
                     "split": "train",
                     "trust_remote_code": true,
-                    "chunk_size": 3000,
+                    "chunk_size": 5000,
                     "dataset_weight": 0.25
                 }
             ],
             "shuffle": true,
-            "seed": 1,
+            "seed": 76,
             "max_seq_length": 1024,
-            "total_samples": 13107
+            "total_samples": 16384
         },
         "validation": {
-            "hf_sources": [
+            "sources": [
                 {
-                    "name_or_path": "data/data1",
+                    "name_or_path": "data/bert_mlm/data1",
                     "split": "train",
                     "offset": 30000,
-                    "chunk_size": 1200,
+                    "chunk_size": 7000,
                     "dataset_weight": 0.75
                 },
                 {
-                    "name_or_path": "data/data2",
+                    "name_or_path": "data/bert_mlm/data2",
                     "split": "train",
                     "trust_remote_code": true,
                     "offset": 30000,
-                    "chunk_size": 400,
+                    "chunk_size": 3000,
                     "dataset_weight": 0.25
                 }
             ],
-            "seed": 1,
+            "seed": 76,
             "max_seq_length": 1024,
-            "total_samples": 2000
+            "total_samples": 10000
         },
         "test": {
-            "input_file": "data/data1",
+            "input_file": "data/bert_mlmdata1",
             "max_seq_length": 1024,
             "total_samples": 2000
         }

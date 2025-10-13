@@ -33,15 +33,15 @@
     },
     "data": {
         "training": {
-            "hf_sources": [
+            "sources": [
                 {
-                    "name": "HuggingFaceTB/dclm-edu",
+                    "name_or_path": "HuggingFaceTB/dclm-edu",
                     "split": "train",
                     "chunk_size": 75000,
                     "dataset_weight": 0.75
                 },
                 {
-                    "name": "codeparrot/github-code",
+                    "name_or_path": "codeparrot/github-code",
                     "split": "train",
                     "trust_remote_code": true,
                     "chunk_size": 25000,
@@ -54,16 +54,16 @@
             "total_samples": 131072
         },
         "validation": {
-            "hf_sources": [
+            "sources": [
                 {
-                    "name": "HuggingFaceTB/dclm-edu",
+                    "name_or_path": "HuggingFaceTB/dclm-edu",
                     "split": "train",
                     "offset": 100000,
                     "chunk_size": 12000,
                     "dataset_weight": 0.75
                 },
                 {
-                    "name": "codeparrot/github-code",
+                    "name_or_path": "codeparrot/github-code",
                     "split": "train",
                     "trust_remote_code": true,
                     "offset": 100000,
