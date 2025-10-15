@@ -493,11 +493,7 @@ class BertOnlyMLMDataset(Dataset):
                                     f"offset {source['offset']}")
             ds = load_local_datasets(dataset_config["local_sources"], seed=self.seed)
             sep_token = self.tokenizer.sep_token
-            def add_sep_tok(example):
-                example["text"] = example["text"] + sep_token
-                return example
-            ds = [add_sep_tok(ex) for ex in ds]
-            all_sentences = [ex["text"] for ex in ds if "text" in ex]
+            all_sentences = (ds["text"] + sep_token).tolist()
             del ds
         else:
             file_path = os.path.join(base_dir, dataset_config["input_file"])
