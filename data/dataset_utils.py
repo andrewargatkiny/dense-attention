@@ -2,7 +2,6 @@ import copy
 import os
 import io
 import gzip
-import json
 import random
 import time
 import pyarrow.parquet as pq
@@ -11,15 +10,14 @@ import pandas as pd
 from orjson import loads
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
-from typing import List, Optional, Dict
+from typing import List, Optional
 from itertools import islice
-from collections import defaultdict
 
 import datasets
 import huggingface_hub
 import numpy as np
 from torch import distributed as dist
-from torch.utils.data import DataLoader, RandomSampler
+from torch.utils.data import DataLoader
 
 
 class WorkerInitObj(object):
@@ -86,15 +84,14 @@ class DatasetParams:
     chunk_size: int
 
     # Optional parameters with default values
-
-    start_file: int = None
-    end_file: int = None
-    local_offset: int = None
-    take_in_file: int = None
-    files_len: list = None
-    paths_files: list = None
-    cumulate_len: list = None
-
+    start_file: Optional[int] = None
+    end_file: Optional[int] = None
+    local_offset: Optional[int] = None
+    take_in_file: Optional[int] = None
+    files_len: Optional[List[int]] = None
+    paths_files: Optional[List[str]] = None
+    cumulate_len: Optional[int] = None
+    
     subset: Optional[str] = None
     offset: int = 0
     split: str = "train"
@@ -199,9 +196,7 @@ def materialize_data(ds: datasets.IterableDataset) -> List[str]:
             seconds_to_sleep = max(300, seconds_to_sleep + 60)
 
 
-
-
-
+# local datasets implementation
 def open_compressed_file(path: str):
     if path.endswith(".gz"):
         return gzip.open(path, "rt", encoding="utf-8")
@@ -223,7 +218,7 @@ def get_file_len(path: str) -> int:
 
 def read_chunk_from_file(path: str, take: int,  local_offset: int = 0) -> pd.DataFrame:
     """
-    Efficiently read a chunk of data from a file (Parquet or JSONL) starting at a given offset.
+    Read a chunk of data from a file (Parquet or JSONL) starting at a given offset.
 
     Args:
         path (str): Path to the dataset file (.parquet, .jsonl, .gz, .zst, .txt)
@@ -245,9 +240,9 @@ def read_chunk_from_file(path: str, take: int,  local_offset: int = 0) -> pd.Dat
 
         result = []
 
-        for rg in range(start_group, end_group + 1):
-            group_start = cumsum[rg]
-            group_end = cumsum[rg + 1]
+        for group in range(start_group, end_group + 1):
+            group_start = cumsum[group]
+            group_end = cumsum[group + 1]
 
             start_in_group = max(0, local_offset - group_start)
             end_in_group = min(group_end, local_offset + take) - group_start
@@ -255,29 +250,29 @@ def read_chunk_from_file(path: str, take: int,  local_offset: int = 0) -> pd.Dat
             if end_in_group <= start_in_group:
                 continue
 
-            table = pf.read_row_group(rg)
+            table = pf.read_row_group(group)
             result.append(table.slice(start_in_group, end_in_group - start_in_group).to_pandas())
 
         df = pd.concat(result, ignore_index=True)
 
     else:
         with open_compressed_file(path) as f:
-            print(local_offset, local_offset + take)
             for line in islice(f, local_offset, local_offset + take):
                 line = line.strip()
                 if not line:
                     continue
-                try:
-                    obj = loads(line)
-                except Exception:
-                    continue
+                obj = loads(line)
                 result.append(obj)
-                
-                
-        df = pd.DataFrame(result) if result else pd.DataFrame()
+            df = pd.DataFrame(result)
+
+
+    for name in ['code', 'page', 'content']:
+        if name in df.columns:
+            df.rename(columns={name: 'text'}, inplace=True)
     
-    df = df[df["value"].notnull()].copy()
-    df["value"] = df["value"].astype(str)
+    df = df[df["text"].notnull()]
+    df["text"] = df["text"].astype(str)
+    
     return df
 
 
@@ -286,7 +281,25 @@ def read_sharded_across_files(files: List[str],
                               take_in_files: int,
                               start_file: int,
                               end_file: int,
-                              files_len: List[int]) -> List[Dict]:
+                              files_len: List[int]) -> pd.DataFrame:
+    """
+    Read a continuous data slice that spans multiple dataset files.
+
+    This function handles reading a portion of data that may cross file boundaries.
+    It starts reading from a given offset in the first file, continues through
+    intermediate files if needed, and stops after reading the required number of rows.
+
+    Args:
+        files (List[str]): List of dataset file paths.
+        local_offset (int): Starting row offset within the first file.
+        take_in_files (int): Number of rows to read from the last file (or total rows if within one file).
+        start_file (int): Index of the first file to read from.
+        end_file (int): Index of the last file to read from.
+        files_len (List[int]): Precomputed number of rows in each file (optional; can be empty).
+
+    Returns:
+        pd.DataFrame: Concatenated DataFrame containing the requested data slice across files.
+    """
     dfs = []
     if start_file == end_file:
         df = read_chunk_from_file(files[start_file], take_in_files, local_offset)
@@ -305,26 +318,22 @@ def read_sharded_across_files(files: List[str],
     df = pd.concat(dfs, ignore_index=True)
     return df
 
-def apply_filters(data: List[Dict], params: DatasetParams) -> List[Dict]:
+def apply_filters(data: pd.DataFrame, params) -> pd.DataFrame:
     if params.filter_geq_column:
         col = params.filter_geq_column
         val = params.filter_geq_value
         if col == "text":
-            data = [ex for ex in data if len(ex.get("text", "").split()) >= val]
-        else:
-            data = [ex for ex in data if ex.get(col) is not None and ex.get(col) >= val]
-
+            data = data[data["text"].str.split().apply(len) >= val]
+            
     if params.filter_leq_column:
         col = params.filter_leq_column
         val = params.filter_leq_value
         if col == "text":
-            data = [ex for ex in data if len(ex.get("text", "").split()) <= val]
-        else:
-            data = [ex for ex in data if ex.get(col) is not None and ex.get(col) <= val]
+            data = data[data["text"].str.split().apply(len) <= val]
 
     return data
 
-def load_local_datasets(dataset_configs: List[dict], seed: Optional[int] = None) -> List[Dict]:
+def load_local_datasets(dataset_configs: List[dict], seed: Optional[int] = None) -> pd.DataFrame:
     """
     Loads data from multiple sources, applies filters, and combines
     using weighted random sampling. Supports both single file and
@@ -338,7 +347,6 @@ def load_local_datasets(dataset_configs: List[dict], seed: Optional[int] = None)
         dataset if only one provided 
     """
     params_list = [DatasetParams(**cfg) for cfg in dataset_configs]
-    chunks_with_weights = []
 
     dfs = []
     weights = []
@@ -355,17 +363,17 @@ def load_local_datasets(dataset_configs: List[dict], seed: Optional[int] = None)
         dfs.append(data_chunk)
         weights.append(params.dataset_weight)
 
-    if len(chunks_with_weights) == 1:
-        return chunks_with_weights[0][0][:params_list[0].chunk_size]
-    if seed is not None:
-        random.seed(seed)
+    if len(params_list) == 1:
+        return data_chunk
+    
+    np.random.seed(seed)
 
     n_dfs = len(dfs)
     positions = np.zeros(n_dfs, dtype=int)
     lengths = np.array([len(df) for df in dfs], dtype=int)
     weights = np.array(weights, dtype=float)
     weights = (weights / weights.sum()).tolist()
-    
+
     combined_rows = []
     while True:
         if np.any(positions >= lengths):
@@ -374,6 +382,7 @@ def load_local_datasets(dataset_configs: List[dict], seed: Optional[int] = None)
         combined_rows.append(dfs[idx].iloc[positions[idx]])
         positions[idx] += 1
     return pd.DataFrame(combined_rows).reset_index(drop=True)
+
 
 class ShardedDatasetWrapper:
     """For multi-file datasets and distributed training. Each data file should
@@ -401,6 +410,7 @@ class ShardedDatasetWrapper:
             self.use_local_sources = True
 
         self.name = "name"
+        self.source = "hf_sources" if self.use_hf_sources else "local_sources"
         if self.use_hf_sources or self.use_local_sources:
             self.chunk_sizes = dict()
             self.current_offsets = dict()
@@ -473,7 +483,27 @@ class ShardedDatasetWrapper:
         #self.dataset_future = dataset
         return dataset
 
-    def get_num_file(self, source):    
+    def get_num_file(self, source):
+        """
+        Determine which files and offsets correspond to a given data range in a sharded dataset.
+
+        This method calculates which file(s) contain the requested data chunk, the local offset
+        within the starting file, and how many rows to read from the ending file. It updates
+        internal tracking of file lengths and cumulative lengths as needed.
+
+        Args:
+            source (dict): Metadata describing the read position, containing:
+                - "offset" (int): Global row offset in the dataset.
+                - "chunk_size" (int): Number of rows to read in total.
+                - self.name (str): Key for the dataset path.
+
+        Returns:
+            Tuple[int, int, int, int]:
+                - local_offset (int): Starting row offset within the first file.
+                - take_in_file (int): Number of rows to read from the last file.
+                - start_file (int): Index of the first file to read from.
+                - end_file (int): Index of the last file to read from.
+        """    
         path = source[self.name]
         files = self.paths_files[path]
         cur = len(self.files_len[path])
@@ -485,7 +515,8 @@ class ShardedDatasetWrapper:
             cur += 1
         
         assert self.cumulate_len[path] >= source["offset"], \
-            (f"закончился")
+            (f"Dataset exhausted, offset: {source['offset']} exceeds total "
+            f"file length: {self.cumulate_len[path]} for rank {self.global_rank}")
         start_file = max(0, cur - 1)
         len_last_file = self.files_len[path][-1]
         local_offset = len_last_file - (self.cumulate_len[path] - source["offset"])
@@ -496,8 +527,16 @@ class ShardedDatasetWrapper:
             self.cumulate_len[path] += length
             cur += 1
 
+        len_last_file = self.files_len[path][-1]
         end_file = cur - 1
-        take_in_file = len_last_file - (self.cumulate_len[path] - source["offset"] - source["chunk_size"])
+        difference = self.cumulate_len[path] - (source["offset"] + source["chunk_size"])
+        
+        if difference > 0:
+            take_in_file = len_last_file - difference
+        elif difference < 0 and (self.cumulate_len[path] - len_last_file) <= local_offset <= self.cumulate_len[path]:
+            take_in_file = self.cumulate_len[path] - local_offset
+        else:
+            take_in_file = len_last_file
 
         return local_offset, take_in_file, start_file, end_file
 
