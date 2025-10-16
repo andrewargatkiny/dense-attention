@@ -107,7 +107,7 @@ class RoPE(RelPEBase):
         # 1st repeat is for x1 and the 2nd is for x2 coordinate in 2-dimensional
         # (x1, x2) vectors that comprise the whole head embedding dimension.
         # It's assumed in this implementation that all x1s are stored at first
-        # withing the dim, and only then all x2s.
+        # within the dim, and only then all x2s.
         angles = torch.outer(seq_idx, theta).repeat(1, 2).float()
         self.rotate_half = self.rotate_half_classic
 
@@ -179,8 +179,16 @@ class RoPE(RelPEBase):
     def apply_local_relpe2(self, x: torch.Tensor, window_size, num_windows):
         """Applies RoPE in a way that treats local attention windows as
         independent sequences. It's assumed that input `x` is of form
-        (bs, num_windows, num_heads, window_size, head_dim) and RoPE cache is
-        (bs (1), num_heads (1), seqlen, head_dim) """
+        (bs, num_windows, num_heads, window_size, head_dim) or
+        (bs, num_windows, window_size, num_heads * head_dim),
+        and that RoPE cache is respectively
+        (bs (1), num_windows (1), num_heads (1), window_size, head_dim)
+        or (bs (1), num_windows (1), window_size, num_heads * head_dim).
+
+        This method has the same effect as `apply_relpe`, because by definition
+        seq_len = window_size and additional `num_windows` dim is broadcasted
+        either way. It will be deprecated in a future release.
+        """
         cache_cos = self.cache_cos.unsqueeze(0)[..., :window_size, :]
         cache_sin = self.cache_sin.unsqueeze(0)[..., :window_size, :]
         pdtype = x.dtype
@@ -251,7 +259,14 @@ class TrigRelPEBase(RelPEBase):
     def apply_local_relpe2(self, x: torch.Tensor, window_size, num_windows):
         """Applies RelPE in a way that treats local attention windows as
         independent sequences. It's assumed that input `x` is of form
-        (bs, num_windows, num_heads, window_size, head_dim)"""
+        (bs, num_windows, num_heads, window_size, head_dim) or
+        (bs, num_windows (1), window_size, num_heads * head_dim).
+
+        This method has the same effect as `apply_relpe`, because by definition
+        seq_len = window_size and additional `num_windows` dim is broadcasted
+        either way. It will be deprecated in a future release.
+        """
+
         return x * self.rel_pos_emb.unsqueeze(0)[..., :window_size, :]
 
 class CosRelPE(TrigRelPEBase):
