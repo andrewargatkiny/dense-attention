@@ -165,6 +165,9 @@ class RoPE(RelPEBase):
         x = x * cache_cos + self.rotate_half(x) * cache_sin
         return x.to(pdtype)
 
+    def apply_local_relpe(self, x: torch.Tensor, window_size, num_windows):
+        raise RuntimeError("This method should have been overridden in init.")
+
     def apply_local_relpe_fused(self, x: torch.Tensor, window_size, num_windows):
         """Applies RoPE in a way that treats local attention windows as
         independent sequences. It's assumed that input `x` is of form
@@ -259,6 +262,9 @@ class TrigRelPEBase(RelPEBase):
 
     def apply_relpe(self, x: torch.Tensor) -> torch.Tensor:
         return x * self.rel_pos_emb
+
+    def apply_local_relpe(self, x: torch.Tensor, window_size, num_windows):
+        raise RuntimeError("This method should have been overridden in init.")
 
     def apply_local_relpe_fused(self, x: torch.Tensor, window_size, num_windows):
         """Applies RelPE in a way that treats local attention windows as
