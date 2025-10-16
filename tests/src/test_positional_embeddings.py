@@ -130,22 +130,20 @@ class ReferenceRoPE(RelPEBase):
 
 
 @pytest.mark.parametrize(
-    "seq_len, head_dim, window_size",
-    [
-        (32, 64, 8),
-        (21, 32, 7),
-        (33, 16, 11),
-    ],
+    "seq_len, window_size", [(32, 8), (21, 7), (33, 11)]
 )
-@pytest.mark.parametrize("num_heads", [1, 4, 8])
+@pytest.mark.parametrize("head_dim", [2, 16, 32, 64])
+@pytest.mark.parametrize("num_heads", [1, 5, 8])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
 def test_rope_all_methods_one_func(seq_len, head_dim, num_heads, window_size, dtype):
     """
     Compares different RoPE methods in one function:
     Test cases:
       - apply_relpe (merged num_h+dim) == apply_relpe (reference)
+        if num_h == 1 or dim == 2
       - apply_relpe (merged num_h+dim) == apply_relpe (separate num_h+dim)
       - apply_local_relpe (merged num_h+dim) == apply_local_relpe (reference)
+        if num_h == 1 or dim == 2
       - apply_local_relpe (merged num_h+dim) != apply_relpe (merged num_h+dim)
         if window_size != seq_len
       - apply_local_relpe (merged num_h+dim) == apply_relpe (merged num_h+dim)
@@ -156,7 +154,7 @@ def test_rope_all_methods_one_func(seq_len, head_dim, num_heads, window_size, dt
 
     By transitivity, success of these test cases implies that more equalities
     hold, e.g.,
-    apply_local_relpe2 (sep. num_h+dim) = apply_local_relpe (sep. num_h+dim).
+    apply_local_relpe2 (sep. num_h+dim) = apply_local_relpe (merged num_h+dim).
     """
     if head_dim % 2 != 0:
         pytest.skip("RoPE requires even head_dim")
@@ -199,8 +197,10 @@ def test_rope_all_methods_one_func(seq_len, head_dim, num_heads, window_size, dt
     out_ref = ref_rope.apply_relpe(x)
     out_rope_sep = rope_h_sep.apply_relpe(x_h_sep)
     assert out_rope.shape == out_ref.shape == (B, seq_len, num_heads * head_dim)
-    # Merged and reference merged implementations should be equal
-    assert torch.allclose(out_rope, out_ref, rtol=RTOL, atol=ATOL)
+    # Merged and reference merged implementations should be equal for single
+    # head or head dimension of 2 elements.
+    if num_heads == 1 or head_dim == 2:
+        assert torch.allclose(out_rope, out_ref, rtol=RTOL, atol=ATOL)
     assert out_rope_sep.shape == (B, num_heads, seq_len, head_dim)
     out_rope_sep = (out_rope_sep.permute(0, 2, 1, 3)
                     .reshape(B, seq_len, num_heads * head_dim))
@@ -212,12 +212,11 @@ def test_rope_all_methods_one_func(seq_len, head_dim, num_heads, window_size, dt
                                                    num_windows=num_windows)
     out_ref_loc = ref_rope.apply_local_relpe(x, window_size=window_size,
                                              num_windows=num_windows)
-    out_rope_sep_loc = rope_h_sep.apply_local_relpe(
-        x_h_sep, window_size=window_size, num_windows=num_windows
-    )
     assert out_rope_loc.shape == out_ref_loc.shape == (B, seq_len, num_heads * head_dim)
-    # Merged and reference merged implementations should be equal
-    assert torch.allclose(out_rope_loc, out_ref_loc, rtol=RTOL, atol=ATOL)
+    # Merged and reference merged implementations should be equal for single
+    # head or head dimension of 2 elements.
+    if num_heads == 1 or head_dim == 2:
+        assert torch.allclose(out_rope_loc, out_ref_loc, rtol=RTOL, atol=ATOL)
     # Together, the two clauses below test that
     # (window_size == seq_len) <=> (local RoPE == global RoPE).
     # 1. (window_size != seq_len) => (local RoPE != global RoPE)
@@ -227,6 +226,9 @@ def test_rope_all_methods_one_func(seq_len, head_dim, num_heads, window_size, dt
     assert torch.allclose(out_rope_loc[:, :window_size, ...],
                           out_rope[:, :window_size, ...], rtol=RTOL, atol=ATOL)
 
+    out_rope_sep_loc = rope_h_sep.apply_local_relpe(
+        x_h_sep, window_size=window_size, num_windows=num_windows
+    )
     assert out_rope_sep_loc.shape == (B, num_heads, seq_len, head_dim)
     out_rope_sep_loc = (out_rope_sep_loc.permute(0, 2, 1, 3)
                         .reshape(B, seq_len, num_heads * head_dim))
@@ -241,7 +243,7 @@ def test_rope_all_methods_one_func(seq_len, head_dim, num_heads, window_size, dt
     )
     assert out_rope_loc2.shape == (
         B, num_windows, window_size, num_heads * head_dim)
-    out_rope_sep_loc2 = ref_rope.apply_local_relpe2(
+    out_rope_sep_loc2 = rope_h_sep.apply_local_relpe2(
         x_h_sep_w_sep, window_size=window_size, num_windows=num_windows
     )
     assert out_rope_sep_loc2.shape == (

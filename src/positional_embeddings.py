@@ -115,6 +115,7 @@ class RoPE(RelPEBase):
         cache_sin = torch.sin(angles).unsqueeze(0)
         # cache: bs (1), seqlen, head embed dim
         if sep_head_dim:
+            self.apply_local_relpe = self.apply_local_relpe_sep
             cache_cos = cache_cos.unsqueeze(1)
             cache_sin = cache_sin.unsqueeze(1)
             # cache: bs (1), headdim (1), seqlen, head embed dim
@@ -122,6 +123,7 @@ class RoPE(RelPEBase):
             if num_heads is None:
                 raise ValueError("If head and embedding dimensions are not "
                                  "separated, `num_heads` should be provided.")
+            self.apply_local_relpe = self.apply_local_relpe_fused
             cache_cos = cache_cos.repeat(1, 1, num_heads)
             cache_sin = cache_sin.repeat(1, 1, num_heads)
             # cache: bs (1), seqlen, head embed dim * num heads
@@ -163,16 +165,23 @@ class RoPE(RelPEBase):
         x = x * cache_cos + self.rotate_half(x) * cache_sin
         return x.to(pdtype)
 
-    def apply_local_relpe(self, x: torch.Tensor, window_size, num_windows):
+    def apply_local_relpe_fused(self, x: torch.Tensor, window_size, num_windows):
         """Applies RoPE in a way that treats local attention windows as
         independent sequences. It's assumed that input `x` is of form
-        (bs, num_windows * window_size, num_heads * head_dim) or
-        (bs, num_heads, num_windows * window_size, head_dim), depending on init."""
+        (bs, num_windows * window_size, num_heads * head_dim)."""
         cache_cos = self.cache_cos[..., :window_size, :].repeat(1, num_windows, 1)
         cache_sin = self.cache_sin[..., :window_size, :].repeat(1, num_windows, 1)
         pdtype = x.dtype
-        # First half of the tensor [x1, x2] takes form x1 * cos - x2 * sin
-        # Second half is x1 * cos + x2 * sin
+        x = x * cache_cos + self.rotate_half(x) * cache_sin
+        return x.to(pdtype)
+
+    def apply_local_relpe_sep(self, x: torch.Tensor, window_size, num_windows):
+        """Applies RoPE in a way that treats local attention windows as
+        independent sequences. It's assumed that input `x` is of form
+        (bs, num_heads, num_windows * window_size, head_dim)."""
+        cache_cos = self.cache_cos[..., :window_size, :].repeat(1, 1, num_windows, 1)
+        cache_sin = self.cache_sin[..., :window_size, :].repeat(1, 1, num_windows, 1)
+        pdtype = x.dtype
         x = x * cache_cos + self.rotate_half(x) * cache_sin
         return x.to(pdtype)
 
@@ -232,12 +241,14 @@ class TrigRelPEBase(RelPEBase):
         angles: torch.Tensor = torch.outer(torch.arange(seq_len), theta)
         cache = self.trig_transform(angles).unsqueeze(0)
         if sep_head_dim:
+            self.apply_local_relpe = self.apply_local_relpe_sep
             cache = cache.unsqueeze(1)
             # cache: bs (1), headdim (1), seqlen, head embed dim
         else:
             if num_heads is None:
                 raise ValueError("If head and embedding dimensions are not "
                                  "separated, `num_heads` should be provided.")
+            self.apply_local_relpe = self.apply_local_relpe_fused
             cache = cache.repeat(1, 1, num_heads)
             # cache: bs (1), seqlen, head embed dim * num heads
         self.register_buffer("rel_pos_emb", cache, persistent=False)
@@ -249,12 +260,17 @@ class TrigRelPEBase(RelPEBase):
     def apply_relpe(self, x: torch.Tensor) -> torch.Tensor:
         return x * self.rel_pos_emb
 
-    def apply_local_relpe(self, x: torch.Tensor, window_size, num_windows):
+    def apply_local_relpe_fused(self, x: torch.Tensor, window_size, num_windows):
         """Applies RelPE in a way that treats local attention windows as
         independent sequences. It's assumed that input `x` is of form
-        (bs, num_windows * window_size, num_heads * head_dim) or
-        (bs, num_heads, num_windows * window_size, head_dim), depending on init."""
+        (bs, num_windows * window_size, num_heads * head_dim)."""
         return x * self.rel_pos_emb[..., :window_size, :].repeat(1, num_windows, 1)
+
+    def apply_local_relpe_sep(self, x: torch.Tensor, window_size, num_windows):
+        """Applies RelPE in a way that treats local attention windows as
+        independent sequences. It's assumed that input `x` is of form
+        (bs, num_heads, num_windows * window_size, head_dim)."""
+        return x * self.rel_pos_emb[..., :window_size, :].repeat(1, 1, num_windows, 1)
 
     def apply_local_relpe2(self, x: torch.Tensor, window_size, num_windows):
         """Applies RelPE in a way that treats local attention windows as
