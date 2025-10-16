@@ -140,10 +140,16 @@ class DenseAttention(nn.Module):
                                  f"{self.relpe_scheme} conform to acceptable codes "
                                  f"{relpe_keys}.")
 
+        # Set RelPE functions which are used in `_forward_chunked`. They can be
+        # local, global or dummy, depending on `local_relpe` and `relpe_scheme`
+        # config settings.
         self.pre_apply_relpe = self._apply_dummy_relpe
         self.apply_q_relpe = self._apply_dummy_relpe
         self.apply_k_relpe = self._apply_dummy_relpe
         self.apply_v_relpe = self._apply_dummy_relpe
+        # Set RelPE functions which are used in `forward_global`. They are
+        # guaranteed to be either global or dummy, depending on the
+        # `relpe_scheme`.
         self.pre_apply_global_relpe = self._apply_dummy_relpe
         self.apply_q_global_relpe = self._apply_dummy_relpe
         self.apply_k_global_relpe = self._apply_dummy_relpe
@@ -442,7 +448,7 @@ class DenseAttention(nn.Module):
         last_chunk =  seq_len - chunk_size * num_chunks
         if last_chunk != 0:
             remainder_dims = list(size)
-            remainder_dims[1] = last_chunk
+            remainder_dims[1] = chunk_size - last_chunk
             remainder = torch.zeros(
                 size=remainder_dims, device=hidden_states.device,
                 dtype=hidden_states.dtype
@@ -491,7 +497,7 @@ class DenseAttention(nn.Module):
         output = self.permute_dims_f(attention)
         # output: (Batch, Chunk, ChunkLen, EmbedDim) or
         # (Batch, Chunk, ChunkLen, Head, HeadDim)
-        output = output.reshape(size[0], seq_len + last_chunk, size[2])
+        output = output.reshape(size[0], -1, size[2])
         output = output[:, :seq_len, :]
         # output: Batch, SeqLen, EmbedDim
         return output

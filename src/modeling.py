@@ -161,8 +161,9 @@ class DANetEncoder(nn.Module):
             self.final_transform_fn = lambda x: x
 
         self.rope_cache = RelPETypeToClass[self.relpe_type](
-            config.max_position_embeddings, #args.max_seq_length
-            config.hidden_size // config.num_attention_heads,
+            seq_len=config.max_position_embeddings,
+            n_elem=config.hidden_size // config.num_attention_heads,
+            sep_head_dim=False,
             num_heads=config.num_attention_heads
         )
         self.local_scheme = config.local_scheme.split("_")

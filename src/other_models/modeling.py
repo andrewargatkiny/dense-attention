@@ -651,9 +651,9 @@ class BertEncoder(nn.Module):
         else:
             self. relpe_type = RelPEType.DUMMY
         self.rope_cache = RelPETypeToClass[self.relpe_type](
-            config.max_position_embeddings, #args.max_seq_length
-            config.hidden_size // config.num_attention_heads,
-            #num_heads=config.num_attention_heads
+            seq_len=config.max_position_embeddings,
+            n_elem=config.hidden_size // config.num_attention_heads,
+            sep_head_dim=True
         )
 
         layer = BertLayer(config)
