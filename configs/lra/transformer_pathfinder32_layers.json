@@ -18,7 +18,7 @@
         "window_size": 256,
         "intermediate_size":512,
 
-        "layers_scheme": "tr_swa",
+        "layers_scheme": "tr_swa_linear",
         "layers": [
             {
                 "hidden_size": 128,
@@ -27,6 +27,7 @@
                 "layer_type": "transformer",
                 "pre_attn_ln_type": "default",
                 "post_attn_ln_type": "default",
+                "local_scheme":"sl",
                 "attention_kernel": "softmax",
                 "attn_proj_biases": true
             },
@@ -48,6 +49,7 @@
                 "pre_attn_ln_type": "default",
                 "post_attn_ln_type": "default",
                 "attention_kernel": "linear",
+                "local_scheme": "l",
                 "feature_map": "1_plus_elu",
                 "attn_proj_biases": true
             }

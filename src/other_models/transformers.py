@@ -255,6 +255,7 @@ class TransformerLayerConfig(object):
                  max_position_embeddings=512,
                  pos_emb_type="learned",
                  relpe_type=None,
+                 local_scheme=None,
                  power=2,
                  scaling_d_factor=False,
                  **kwargs):
@@ -320,6 +321,7 @@ class TransformerLayerConfig(object):
         self.max_position_embeddings = max_position_embeddings
         self.pos_emb_type = pos_emb_type
         self.relpe_type = relpe_type
+        self.local_scheme = local_scheme
         self.initializer_range = initializer_range
         self.pre_attn_ln_type = pre_attn_ln_type
         self.post_attn_ln_type = post_attn_ln_type
@@ -669,6 +671,24 @@ class BertLayer(nn.Module):
         if config.hidden_act == "swiglu":
             self.intermediate = BertSwigluUp(config)
             self.output = BertSwigluDown(config)
+        # logic for local attention scheme
+        if hasattr(config, 'local_scheme') and config.local_scheme and len(config.local_scheme.split("_"))==1:
+            code = config.local_scheme.split('_')[0]
+            valid_codes = {'g', 'l', 'sl', 'swa'}
+            if code not in valid_codes:
+                raise ValueError(f"Unknown attention type code '{code}' in local_scheme. "
+                                        f"Valid codes are: {sorted(list(valid_codes))}")
+
+            
+            if code == 'l':
+                self.attention.self = BertSelfLocalAttention(config)
+            elif code == 'sl':
+                self.attention.self = BertSelfShiftedLocalAttention(config)
+            elif code == 'swa':
+                layer_config = copy.deepcopy(config)
+                layer_config.attention_kernel = "swa"
+                self.attention.self = BertSelfAttention(layer_config)
+            # 'g' is the default and requires no change, so we just pass.
 
 
         self._init_weights(config)
