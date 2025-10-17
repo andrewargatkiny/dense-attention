@@ -635,12 +635,8 @@ class GPTPretrainingDataset(Dataset):
                                     f"offset {source['offset']}")
             ds = load_local_datasets(dataset_config["local_sources"], seed=self.seed)
             eos_token = self.tokenizer.eos_token
-            def strip_add_eos_tok(example):
-                example["text"] = example["text"].strip() + eos_token
-                return example
-            ds = [strip_add_eos_tok(ex) for ex in ds]
-            all_sentences = [ex["text"] for ex in ds if "text" in ex]
-            del data
+            all_sentences = (ds["text"].strip() + eos_token).tolist()
+            del ds
         else:
             file_path = os.path.join(base_dir, dataset_config["input_file"])
             base_name, ext = os.path.splitext(file_path)
