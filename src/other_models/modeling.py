@@ -244,29 +244,12 @@ class BertEncoder(nn.Module):
             self.layer = nn.ModuleList(modules)
 
         else:
-<<<<<<< HEAD
-            # It's the old logic left for compatibility with existing configs.
-            if (config.pos_emb_type == PositionalEmbeddingsTypes.RELPE and
-                    config.relpe_type is not None):
-                self.relpe_type = RelPEType[config.relpe_type.upper()]
-            else:
-                self.relpe_type = RelPEType.DUMMY
-            self.rope_cache = RelPETypeToClass[self.relpe_type](
-                config.max_position_embeddings, #args.max_seq_length
-                config.hidden_size // config.num_attention_heads,
-                num_heads=None
-            )
-            layer = BertLayer(config)
-            self.layer = nn.ModuleList(
-                [copy.deepcopy(layer) for _ in range(config.num_hidden_layers)])
-=======
             self. relpe_type = RelPEType.DUMMY
-        self.rope_cache = RelPETypeToClass[self.relpe_type](
-            seq_len=config.max_position_embeddings,
-            n_elem=config.hidden_size // config.num_attention_heads,
-            sep_head_dim=True
-        )
->>>>>>> b73f4de4e4eb3984bf9128544bbdec780438f3fa
+            self.rope_cache = RelPETypeToClass[self.relpe_type](
+                seq_len=config.max_position_embeddings,
+                n_elem=config.hidden_size // config.num_attention_heads,
+                sep_head_dim=True
+            )
 
             # logic for local attention scheme
             if hasattr(config, 'local_scheme') and config.local_scheme:
