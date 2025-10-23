@@ -77,6 +77,7 @@ class HFDatasetParams:
     chunk_size: int
 
     # Optional parameters with default values
+    features: Optional[dict] = None
     subset: Optional[str] = None
     offset: int = 0
     split: str = "train"
@@ -131,7 +132,8 @@ def load_hf_dataset(dataset_config: HFDatasetParams) -> datasets.IterableDataset
         dataset_config.subset,
         split=dataset_config.split,
         trust_remote_code=dataset_config.trust_remote_code,
-        streaming=True
+        streaming=True,
+        features=dataset_config.features
     ).shard(
         # Handle distributed training
         dataset_config.world_size,
