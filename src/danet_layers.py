@@ -123,9 +123,9 @@ class DANetLayerWrapper(nn.Module):
         super(DANetLayerWrapper, self).__init__()
         self.config = config
         self.layer = DANetLayerWithLocalAttention(config)
-        self.apply(self.init_bert_weights)
+        self.apply(self.init_weights)
 
-    def init_bert_weights(self, module):
+    def init_weights(self, module):
         std = self.config.initializer_range
         if isinstance(module, nn.Embedding):
             module.weight.data.normal_(mean=0, std=std)

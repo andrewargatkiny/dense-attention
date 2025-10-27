@@ -61,174 +61,6 @@ def swish(x):
 ACT2FN = {"gelu": gelu, "relu": torch.nn.functional.relu, "swish": swish}
 
 
-class TransformerConfig(object):
-    """Configuration class to store the configuration of a `BertModel`.
-    """
-    def __init__(self,
-                 vocab_size_or_config_json_file,
-                 hidden_size=768,
-                 num_hidden_layers=12,
-                 num_attention_heads=12,
-                 intermediate_size=3072,
-                 attention_kernel="softmax",
-                 feature_map=None,
-                 no_reweight=False,
-                 no_reweight_post_norm=None,
-                 hidden_act="gelu",
-                 embedding_dropout=0,
-                 hidden_dropout_prob=0.1,
-                 attention_probs_dropout_prob=0.1,
-                 attn_proj_biases=True,
-                 max_position_embeddings=512,
-                 pos_emb_type="learned",
-                 relpe_type=None,
-                 type_vocab_size=2,
-                 initializer_range=0.02,
-                 pre_attn_ln_type="default",
-                 post_attn_ln_type="default",
-                 causal=False,
-                 local_attention=False,
-                 local_scheme = None,
-                 window_size=1024,
-                 apply_relpe_after=False,
-                 layers_scheme=None,
-                 power=2,
-                 scaling_d_factor=False,
-                 layers=None,
-                 **kwargs):
-        """Constructs ModelConfig.
-
-        Args:
-            vocab_size_or_config_json_file: Vocabulary size of `inputs_ids` in `BertModel`.
-            hidden_size: Size of the encoder layers and the pooler layer.
-            num_hidden_layers: Number of hidden layers in the Transformer encoder.
-            num_attention_heads: Number of attention heads for each attention layer in
-                the Transformer encoder.
-            intermediate_size: The size of the "intermediate" (i.e., feed-forward)
-                layer in the Transformer encoder.
-            hidden_act: The non-linear activation function (function or string) in the
-                encoder and pooler. If string, "gelu", "relu" and "swish" are supported.
-            hidden_dropout_prob: The dropout probabilitiy for all fully connected
-                layers in the embeddings, encoder, and pooler.
-            attention_probs_dropout_prob: The dropout ratio for the attention
-                probabilities.
-            attn_proj_biases: Whether to use bias in Q, K, V, O matrices in attention.
-            max_position_embeddings: The maximum sequence length that this model might
-                ever be used with. Typically set this to something large just in case
-                (e.g., 512 or 1024 or 2048).
-            type_vocab_size: The vocabulary size of the `token_type_ids` passed into
-                `BertModel`.
-            initializer_range: The sttdev of the truncated_normal_initializer for
-                initializing all weight matrices.
-            apply_relpe_after: Whether Relative Positional Encoding (RELPE) is applied after the feature map (if true)
-             or before the linear attention kernel (if false).
-            local_scheme: Scheme to form patterns of local and global attention
-                layers. Should contain lowercase-letter layer codes separated
-                by underscore '_'. Available codes: 'l' (local attention), 'sl'
-                (shifted local), 'swa' (sliding window), and 'g' (global).
-                If None, `local_attention` flag is used with a hardcoded scheme.
-            pre_attn_ln_type: If not set to "default" (which is `BertLayerNorm`),
-                determines the type of layer norm or activation to use before attention.
-            post_attn_ln_type: Like `pre_attn_ln_type` but for usage before FFN.
-            attention_kernel: Mechanism for attention to use. Currently supported:
-                "softmax", "swa", "linear", "power". Power attention is subtype of
-                linear attention, and many options for linear attention also apply.
-            feature_map: A feature map transform (\phi) for queries and keys in linear
-                attentions.
-            no_reweight: For linear attentions, if set to true, doesn't scale attention
-                scores by their row-wise sums.
-            no_reweight_post_norm: In case of enabled `no_reweight` option in linear
-                attentions, determines whether and which layer norm to use at the end
-                of attention kernel computation. Defaults to None.
-            apply_relpe_after: For linear attentions, determines whether Relative
-                Positional Encoding (RELPE) is applied after the feature map (if true)
-                or before the linear attention kernel (if false).
-            layers_scheme: Defines the sequence and repetition of layers within the encoder.
-                This should be a string of layer names separated by underscores
-                (e.g., 'attention_ffn_attention'). Each name must correspond to a unique layer_name
-                key in one of the configuration dictionaries provided in the layers parameter.
-                power: For Power Attention, determines the power (p).
-            scaling_d_factor: For Power Attention, determines whether to scale q,k by a
-                predetermined scaling factor depending on d for additional numerical
-                stability.
-            layers: A list of dictionaries, where each dictionary provides the configuration
-                for a specific layer type. Each dictionary must contain a unique layer_name
-                key, which is then used by the layer_scheme parameter to construct the full encoder stack.
-        """
-        if isinstance(vocab_size_or_config_json_file, str):
-            with open(vocab_size_or_config_json_file, "r",
-                      encoding='utf-8') as reader:
-                json_config = json.loads(reader.read())
-            for key, value in json_config.items():
-                self.__dict__[key] = value
-        elif isinstance(vocab_size_or_config_json_file, int):
-            self.vocab_size = vocab_size_or_config_json_file
-            self.hidden_size = hidden_size
-            self.num_hidden_layers = num_hidden_layers
-            self.num_attention_heads = num_attention_heads
-            self.hidden_act = hidden_act
-            self.intermediate_size = intermediate_size
-            self.attention_kernel = attention_kernel
-            self.feature_map = feature_map
-            self.no_reweight = no_reweight
-            self.no_reweight_post_norm = no_reweight_post_norm
-            self.embedding_dropout = embedding_dropout
-            self.hidden_dropout_prob = hidden_dropout_prob
-            self.attention_probs_dropout_prob = attention_probs_dropout_prob
-            self.attn_proj_biases = attn_proj_biases
-            self.max_position_embeddings = max_position_embeddings
-            if layers is None:
-                self.pos_emb_type = PositionalEmbeddingsTypes[pos_emb_type.upper()]
-            else:
-                self.pos_emb_type = pos_emb_type
-            self.relpe_type = relpe_type
-            self.type_vocab_size = type_vocab_size
-            self.initializer_range = initializer_range
-            self.pre_attn_ln_type = pre_attn_ln_type
-            self.post_attn_ln_type = post_attn_ln_type
-            self.causal = causal
-            self.local_attention = local_attention
-            self.window_size = window_size
-            self.apply_relpe_after = apply_relpe_after
-            self.local_scheme = local_scheme
-            self.layers_scheme = layers_scheme
-            self.power = power
-            self.scaling_d_factor = scaling_d_factor
-            self.layers = layers
-        else:
-            raise ValueError(
-                "First argument must be either a vocabulary size (int)"
-                "or the path to a pretrained model config file (str)")
-
-    @classmethod
-    def from_dict(cls, json_object):
-        """Constructs a `ModelConfig` from a Python dictionary of parameters."""
-        config = TransformerConfig(vocab_size_or_config_json_file=-1)
-        for key, value in json_object.items():
-            config.__dict__[key] = value
-        if torch.distributed.get_rank() == 0:
-            print(config)
-        return config
-
-    @classmethod
-    def from_json_file(cls, json_file):
-        """Constructs a `ModelConfig` from a json file of parameters."""
-        with open(json_file, "r", encoding='utf-8') as reader:
-            text = reader.read()
-        return cls.from_dict(json.loads(text))
-
-    def __repr__(self):
-        return str(self.to_json_string())
-
-    def to_dict(self):
-        """Serializes this instance to a Python dictionary."""
-        output = copy.deepcopy(self.__dict__)
-        return output
-
-    def to_json_string(self):
-        """Serializes this instance to a JSON string."""
-        return json.dumps(self.to_dict(), indent=2, sort_keys=True) + "\n"
-
 class TransformerLayerConfig(object):
     """Configuration class to store the configuration of a Transformer layer.
     """
@@ -257,8 +89,7 @@ class TransformerLayerConfig(object):
                  relpe_type=None,
                  local_scheme=None,
                  power=2,
-                 scaling_d_factor=False,
-                 **kwargs):
+                 scaling_d_factor=False):
         """Constructs TransformerLayerConfig.
 
         Args:
@@ -304,6 +135,8 @@ class TransformerLayerConfig(object):
             scaling_d_factor: For Power Attention, determines whether to scale q,k by a
                 predetermined scaling factor depending on d for additional numerical
                 stability.
+            local_scheme: A string code specifying the type of local attention to apply in the Transformer 
+                layer. Supported codes: "g", "l", "sl" and "swa".
         """
         
         self.num_hidden_layers = num_hidden_layers
@@ -672,14 +505,8 @@ class BertLayer(nn.Module):
             self.intermediate = BertSwigluUp(config)
             self.output = BertSwigluDown(config)
         # logic for local attention scheme
-        if hasattr(config, 'local_scheme') and config.local_scheme and len(config.local_scheme.split("_"))==1:
-            code = config.local_scheme.split('_')[0]
-            valid_codes = {'g', 'l', 'sl', 'swa'}
-            if code not in valid_codes:
-                raise ValueError(f"Unknown attention type code '{code}' in local_scheme. "
-                                        f"Valid codes are: {sorted(list(valid_codes))}")
-
-            
+        if hasattr(config, 'local_scheme'):
+            code = config.local_scheme
             if code == 'l':
                 self.attention.self = BertSelfLocalAttention(config)
             elif code == 'sl':

@@ -39,7 +39,7 @@ from src.positional_embeddings import PositionalEmbeddingsTypes, SinusoidalPosit
     RelPEType
 from .attention_kernels import SoftmaxAttention, LinearAttention, SlidingWindowAttention, PowerAttention
 from ..activations import Activation2Class
-from .transformers import ACT2FN, BertLayer, BertSelfAttention, BertSelfLocalAttention, BertSelfShiftedLocalAttention, TransformerConfig, BertLayerNorm
+from .transformers import ACT2FN, BertLayer, BertSelfAttention, BertSelfLocalAttention, BertSelfShiftedLocalAttention, BertLayerNorm
 from .layers_registry import LayerTypeToClass, LayerConfigToClass
 
 logger = logging.getLogger(__name__)
@@ -63,6 +63,174 @@ PRETRAINED_MODEL_ARCHIVE_MAP = {
 CONFIG_NAME = 'bert_config.json'
 WEIGHTS_NAME = 'pytorch_model.bin'
 
+
+class TransformerConfig(object):
+    """Configuration class to store the configuration of a `BertModel`.
+    """
+    def __init__(self,
+                 vocab_size_or_config_json_file,
+                 hidden_size=768,
+                 num_hidden_layers=12,
+                 num_attention_heads=12,
+                 intermediate_size=3072,
+                 attention_kernel="softmax",
+                 feature_map=None,
+                 no_reweight=False,
+                 no_reweight_post_norm=None,
+                 hidden_act="gelu",
+                 embedding_dropout=0,
+                 hidden_dropout_prob=0.1,
+                 attention_probs_dropout_prob=0.1,
+                 attn_proj_biases=True,
+                 max_position_embeddings=512,
+                 pos_emb_type="learned",
+                 relpe_type=None,
+                 type_vocab_size=2,
+                 initializer_range=0.02,
+                 pre_attn_ln_type="default",
+                 post_attn_ln_type="default",
+                 causal=False,
+                 local_attention=False,
+                 local_scheme = None,
+                 window_size=1024,
+                 apply_relpe_after=False,
+                 layers_scheme=None,
+                 power=2,
+                 scaling_d_factor=False,
+                 layers=None,
+                 **kwargs):
+        """Constructs ModelConfig.
+
+        Args:
+            vocab_size_or_config_json_file: Vocabulary size of `inputs_ids` in `BertModel`.
+            hidden_size: Size of the encoder layers and the pooler layer.
+            num_hidden_layers: Number of hidden layers in the Transformer encoder.
+            num_attention_heads: Number of attention heads for each attention layer in
+                the Transformer encoder.
+            intermediate_size: The size of the "intermediate" (i.e., feed-forward)
+                layer in the Transformer encoder.
+            hidden_act: The non-linear activation function (function or string) in the
+                encoder and pooler. If string, "gelu", "relu" and "swish" are supported.
+            hidden_dropout_prob: The dropout probabilitiy for all fully connected
+                layers in the embeddings, encoder, and pooler.
+            attention_probs_dropout_prob: The dropout ratio for the attention
+                probabilities.
+            attn_proj_biases: Whether to use bias in Q, K, V, O matrices in attention.
+            max_position_embeddings: The maximum sequence length that this model might
+                ever be used with. Typically set this to something large just in case
+                (e.g., 512 or 1024 or 2048).
+            type_vocab_size: The vocabulary size of the `token_type_ids` passed into
+                `BertModel`.
+            initializer_range: The sttdev of the truncated_normal_initializer for
+                initializing all weight matrices.
+            apply_relpe_after: Whether Relative Positional Encoding (RELPE) is applied after the feature map (if true)
+             or before the linear attention kernel (if false).
+            local_scheme: Scheme to form patterns of local and global attention
+                layers. Should contain lowercase-letter layer codes separated
+                by underscore '_'. Available codes: 'l' (local attention), 'sl'
+                (shifted local), 'swa' (sliding window), and 'g' (global).
+                If None, `local_attention` flag is used with a hardcoded scheme.
+            pre_attn_ln_type: If not set to "default" (which is `BertLayerNorm`),
+                determines the type of layer norm or activation to use before attention.
+            post_attn_ln_type: Like `pre_attn_ln_type` but for usage before FFN.
+            attention_kernel: Mechanism for attention to use. Currently supported:
+                "softmax", "swa", "linear", "power". Power attention is subtype of
+                linear attention, and many options for linear attention also apply.
+            feature_map: A feature map transform (\phi) for queries and keys in linear
+                attentions.
+            no_reweight: For linear attentions, if set to true, doesn't scale attention
+                scores by their row-wise sums.
+            no_reweight_post_norm: In case of enabled `no_reweight` option in linear
+                attentions, determines whether and which layer norm to use at the end
+                of attention kernel computation. Defaults to None.
+            apply_relpe_after: For linear attentions, determines whether Relative
+                Positional Encoding (RELPE) is applied after the feature map (if true)
+                or before the linear attention kernel (if false).
+            layers_scheme: Defines the sequence and repetition of layers within the encoder.
+                This should be a string of layer names separated by underscores
+                (e.g., 'layer1_layer2_layer1_layer3'). Each name must correspond to a unique `layer_name`
+                key in one of the configuration dictionaries provided in the layers parameter.
+                power: For Power Attention, determines the power (p).
+            scaling_d_factor: For Power Attention, determines whether to scale q,k by a
+                predetermined scaling factor depending on d for additional numerical
+                stability.
+            layers: A list of dictionaries, where each dictionary provides the configuration
+                for a specific layer type. Each dictionary must contain a unique `layer_name`
+                key, which is then used by the `layers_scheme` parameter to construct the full encoder stack.
+        """
+        if isinstance(vocab_size_or_config_json_file, str):
+            with open(vocab_size_or_config_json_file, "r",
+                      encoding='utf-8') as reader:
+                json_config = json.loads(reader.read())
+            for key, value in json_config.items():
+                self.__dict__[key] = value
+        elif isinstance(vocab_size_or_config_json_file, int):
+            self.vocab_size = vocab_size_or_config_json_file
+            self.hidden_size = hidden_size
+            self.num_hidden_layers = num_hidden_layers
+            self.num_attention_heads = num_attention_heads
+            self.hidden_act = hidden_act
+            self.intermediate_size = intermediate_size
+            self.attention_kernel = attention_kernel
+            self.feature_map = feature_map
+            self.no_reweight = no_reweight
+            self.no_reweight_post_norm = no_reweight_post_norm
+            self.embedding_dropout = embedding_dropout
+            self.hidden_dropout_prob = hidden_dropout_prob
+            self.attention_probs_dropout_prob = attention_probs_dropout_prob
+            self.attn_proj_biases = attn_proj_biases
+            self.max_position_embeddings = max_position_embeddings
+            if layers is None:
+                self.pos_emb_type = PositionalEmbeddingsTypes[pos_emb_type.upper()]
+            else:
+                self.pos_emb_type = pos_emb_type
+            self.relpe_type = relpe_type
+            self.type_vocab_size = type_vocab_size
+            self.initializer_range = initializer_range
+            self.pre_attn_ln_type = pre_attn_ln_type
+            self.post_attn_ln_type = post_attn_ln_type
+            self.causal = causal
+            self.local_attention = local_attention
+            self.window_size = window_size
+            self.apply_relpe_after = apply_relpe_after
+            self.local_scheme = local_scheme
+            self.layers_scheme = layers_scheme
+            self.power = power
+            self.scaling_d_factor = scaling_d_factor
+            self.layers = layers
+        else:
+            raise ValueError(
+                "First argument must be either a vocabulary size (int)"
+                "or the path to a pretrained model config file (str)")
+
+    @classmethod
+    def from_dict(cls, json_object):
+        """Constructs a `ModelConfig` from a Python dictionary of parameters."""
+        config = TransformerConfig(vocab_size_or_config_json_file=-1)
+        for key, value in json_object.items():
+            config.__dict__[key] = value
+        if torch.distributed.get_rank() == 0:
+            print(config)
+        return config
+
+    @classmethod
+    def from_json_file(cls, json_file):
+        """Constructs a `ModelConfig` from a json file of parameters."""
+        with open(json_file, "r", encoding='utf-8') as reader:
+            text = reader.read()
+        return cls.from_dict(json.loads(text))
+
+    def __repr__(self):
+        return str(self.to_json_string())
+
+    def to_dict(self):
+        """Serializes this instance to a Python dictionary."""
+        output = copy.deepcopy(self.__dict__)
+        return output
+
+    def to_json_string(self):
+        """Serializes this instance to a JSON string."""
+        return json.dumps(self.to_dict(), indent=2, sort_keys=True) + "\n"
 
 
 class BertEmbeddings(nn.Module):
@@ -140,7 +308,7 @@ class BertEncoder(nn.Module):
                     if not layer.get("layer_name"):
                         raise ValueError("Each layer in config.layers must have a 'layer_name' when 'layers_scheme' is used.")
                     if "layer_type" not in layer:
-                        raise ValueError(f"Layer '{layer['layer_name']}' must contain 'layer_type'")
+                        raise ValueError(f"Layer '{layer['layer_name']}' must contain 'layer_type' attribute value")
                     
                     layer_name = layer["layer_name"]
                     if layer_name in name_to_config:
@@ -148,101 +316,72 @@ class BertEncoder(nn.Module):
                     name_to_config[layer_name] = layer
 
                 ordered_names = config.layers_scheme.split("_")
-                
-                if config.num_hidden_layers % len(ordered_names) != 0:
-                    raise ValueError("num_hidden_layers must be divisible by the number of layers in layers_scheme.")
-                
-                self.repeats = config.num_hidden_layers // len(ordered_names)
-                
-                self.layer_scheme = []
-                for layer_name in ordered_names:
-                    if layer_name not in name_to_config:
-                        raise ValueError(f"Layer name '{layer_name}' from layers_scheme not found in config.layers.")
-
-                    layer_config_dict = name_to_config[layer_name]
-                    layer_type = layer_config_dict["layer_type"]
-                    
-                    config_class = LayerConfigToClass[layer_type]
-                    final_layer_params = layer_config_dict.copy()
-                    init_signature = inspect.signature(config_class.__init__)
-                    init_params = init_signature.parameters
-
-                    for param_name in init_params:
-                        if param_name not in final_layer_params and hasattr(config, param_name):
-                            final_layer_params[param_name] = getattr(config, param_name)
-                    
-                    layer_config = config_class(**final_layer_params)
-                    self.layer_scheme.append(final_layer_params)
-                    if (final_layer_params.get("pos_emb_type") == PositionalEmbeddingsTypes.RELPE and
-                            final_layer_params.get("relpe_type") is not None):
-                        relpe_type = RelPEType[final_layer_params["relpe_type"].upper()]
-                    else:
-                        relpe_type = RelPEType.DUMMY
-
-                    relpe_class = RelPETypeToClass[relpe_type]
-                    if layer_type == "danet":
-                        rope_cache = relpe_class(
-                            final_layer_params["max_position_embeddings"],
-                            final_layer_params["hidden_size"] // final_layer_params["num_attention_heads"],
-                            num_heads=final_layer_params["num_attention_heads"]
-                        )
-                    else:
-                        rope_cache = relpe_class(
-                            final_layer_params["max_position_embeddings"],
-                            final_layer_params["hidden_size"] // final_layer_params["num_attention_heads"],
-                            num_heads=None
-                        )
-                    rope_caches.append(rope_cache)
-
-                    layer_class = LayerTypeToClass[layer_type]
-                    module = layer_class(layer_config)
-                    modules.append(module)
-                modules = modules * self.repeats
-                self.rope_caches = nn.ModuleList(rope_caches * self.repeats)
             elif not config.layers_scheme and len(config.layers) == 1:
                 single_layer_config = config.layers[0]
                 if "layer_type" not in single_layer_config:
                     raise ValueError("The single layer defined in config.layers must have a 'layer_type'.")
-                final_layer_params = single_layer_config.copy()
+                
+                if not single_layer_config.get("layer_name"):
+                    single_layer_config["layer_name"] = "layer1"
+                
+                config.layers_scheme = "layer1"
+                name_to_config = {"layer1": single_layer_config}
+                ordered_names = ["layer1"]
+            else:
+                raise ValueError("Invalid layer configuration. Provide either a 'layers_scheme' with corresponding layer definitions, or a single layer definition in 'config.layers' without a 'layers_scheme'.")
+            
+            self.layers_configs = []
+            for i in range(config.num_hidden_layers):
+                layer_name = ordered_names[i % len(ordered_names)]
+                if layer_name not in name_to_config:
+                    raise ValueError(f"Layer name '{layer_name}' from layers_scheme not found in the config entries describing available layer types.")
+
+                layer_config_dict = name_to_config[layer_name]
+                layer_type = layer_config_dict["layer_type"]
+                
+                config_class = LayerConfigToClass[layer_type]
+                final_layer_params = layer_config_dict.copy()
+                # Populate missing layer parameters from the main config object
                 init_signature = inspect.signature(config_class.__init__)
                 init_params = init_signature.parameters
+
                 for param_name in init_params:
                     if param_name not in final_layer_params and hasattr(config, param_name):
                         final_layer_params[param_name] = getattr(config, param_name)
-                layer_config = config_class(**final_layer_params)
-                self.repeats = config.num_hidden_layers
                 
-                if (config.get("pos_emb_type") == PositionalEmbeddingsTypes.RELPE and
+                layer_config = config_class(**final_layer_params)
+                
+                if (final_layer_params.get("pos_emb_type") == PositionalEmbeddingsTypes.RELPE and
                         final_layer_params.get("relpe_type") is not None):
                     relpe_type = RelPEType[final_layer_params["relpe_type"].upper()]
                 else:
                     relpe_type = RelPEType.DUMMY
+
                 relpe_class = RelPETypeToClass[relpe_type]
                 if layer_type == "danet":
                     rope_cache = relpe_class(
-                        final_layer_params["max_position_embeddings"],
-                        final_layer_params["hidden_size"] // final_layer_params["num_attention_heads"],
-                        num_heads=final_layer_params["num_attention_heads"]
+                        seq_len=final_layer_params["max_position_embeddings"],
+                        n_elem=final_layer_params["hidden_size"] // final_layer_params["num_attention_heads"],
+                        sep_head_dim=False
                     )
                 else:
                     rope_cache = relpe_class(
-                        final_layer_params["max_position_embeddings"],
-                        final_layer_params["hidden_size"] // final_layer_params["num_attention_heads"],
-                        num_heads=None
+                        seq_len=final_layer_params["max_position_embeddings"],
+                        n_elem=final_layer_params["hidden_size"] // final_layer_params["num_attention_heads"],
+                        sep_head_dim=True
                     )
                 rope_caches.append(rope_cache)
 
                 layer_class = LayerTypeToClass[layer_type]
                 module = layer_class(layer_config)
                 modules.append(module)
-                modules = modules * self.repeats
-                self.rope_caches = nn.ModuleList(rope_caches * self.repeats)
-                self.layer_scheme = [single_layer_config]
-            else:
-                raise ValueError("Invalid layer configuration. Provide either a 'layers_scheme' with corresponding layer definitions, or a single layer definition in 'config.layers' without a 'layers_scheme'.")
-
+                if i < len(ordered_names):
+                    self.layers_configs.append(final_layer_params)
+            
+            self.rope_caches = nn.ModuleList(rope_caches)
             self.layer = nn.ModuleList(modules)
 
+        #legacy logic for backward compatibility, it will be used if the `layers` parameter is not specified.
         else:
             self. relpe_type = RelPEType.DUMMY
             self.rope_cache = RelPETypeToClass[self.relpe_type](
@@ -259,7 +398,9 @@ class BertEncoder(nn.Module):
                     if code not in valid_codes:
                         raise ValueError(f"Unknown attention type code '{code}' in local_scheme. "
                                             f"Valid codes are: {sorted(list(valid_codes))}")
-
+                layer = BertLayer(config)
+                self.layer = nn.ModuleList(
+                    [copy.deepcopy(layer) for _ in range(config.num_hidden_layers)])
                 for i, layer_module in enumerate(self.layer):
                     code = scheme[i % len(scheme)]
                     if code == 'l':
@@ -278,46 +419,49 @@ class BertEncoder(nn.Module):
                         layer.attention.self = BertSelfLocalAttention(config)
                     elif i % 3 == 1:
                         layer.attention.self = BertSelfShiftedLocalAttention(config)
+
     def prepare_mask(self, hidden_states, attention_mask, layer_config):
-        
+        if attention_mask is None:
+                attention_mask = torch.ones_like(hidden_states)
         if layer_config["layer_type"] == "danet":
             dtype = hidden_states.dtype
-            if attention_mask is None:
-                attention_mask = torch.ones_like(hidden_states)
+            
             extended_attention_mask = (
                 attention_mask /
                 attention_mask.sum(axis=-1, keepdim=True).pow(1. / 3)
-            ).to(dtype)
+            ).to(dtype).unsqueeze(-1)
             if layer_config["local_scheme"] in ["l", "sl"]:
                 local_attention_mask = (
                         attention_mask / layer_config["window_size"] ** (1. / 3)
-                ).to(dtype)
+                ).to(dtype).unsqueeze(-1)
                 extended_attention_mask = (
                     local_attention_mask,
                     extended_attention_mask
                 )
             return extended_attention_mask
         else:
-            if attention_mask is None:
-                attention_mask = torch.ones_like(hidden_states)
+            attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
             attention_mask = attention_mask.to(
                 dtype=hidden_states.dtype)  # fp16 compatibility
             attention_mask = (1.0 - attention_mask) * -10000.0
             return attention_mask
+
     def forward(self,
                 hidden_states,
                 attention_mask,
                 output_all_encoded_layers=True,
                 **kwargs):
-        masks = []
-        for i in range(len(self.layer_scheme)):
-            masks.append(self.prepare_mask(hidden_states, attention_mask, self.layer_scheme[i]))
+        if hasattr(self, "layers_configs"):
+            masks = []
+            num_layers_configs = len(self.layers_configs)
+            for i in range(num_layers_configs):
+                masks.append(self.prepare_mask(hidden_states, attention_mask, self.layers_configs[i]))
         all_encoder_layers = []
         for i, layer_module in enumerate(self.layer):
             hidden_states = layer_module(
                 hidden_states, 
-                attention_mask=masks[i % len(self.layer_scheme)],
-                rope_cache= self.rope_caches[i % len(self.rope_caches)] if hasattr(self, "rope_caches") else self.rope_cache,
+                attention_mask=masks[i % num_layers_configs] if hasattr(self, "layers_configs") else attention_mask,
+                rope_cache= self.rope_caches[i % num_layers_configs] if hasattr(self, "rope_caches") else self.rope_cache,
                   **kwargs) 
             if output_all_encoded_layers:
                 all_encoder_layers.append(hidden_states)
@@ -327,7 +471,6 @@ class BertEncoder(nn.Module):
 
         return all_encoder_layers
     
-
 
 class BertPooler(nn.Module):
     def __init__(self, config):
@@ -439,9 +582,11 @@ class PreTrainedBertModel(nn.Module):
             # cf https://github.com/pytorch/pytorch/pull/5617
             num_layers = self.config.num_hidden_layers
             std = self.config.initializer_range
-            print("Accounting for accumulation on the residual path")
-            std = self.config.initializer_range / math.sqrt(
-                2.0 * num_layers)
+            if hasattr(module, 'bert_output_layer'):
+                if torch.distributed.get_rank() == 0:
+                    print("Accounting for accumulation on the residual path")
+                    std = self.config.initializer_range / math.sqrt(
+                        2.0 * num_layers)
             module.weight.data.normal_(mean=0.0, std=std)
         elif isinstance(module, BertLayerNorm):
             module.bias.data.zero_()
