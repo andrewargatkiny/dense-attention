@@ -422,7 +422,8 @@ class BertEncoder(nn.Module):
 
     def prepare_mask(self, hidden_states, attention_mask, layer_config):
         if attention_mask is None:
-                attention_mask = torch.ones_like(hidden_states)
+            attention_mask = torch.ones(hidden_states.size(0), hidden_states.size(1), 
+                                    dtype=hidden_states.dtype, device=hidden_states.device)
         if layer_config["layer_type"] == "danet":
             dtype = hidden_states.dtype
             

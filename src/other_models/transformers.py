@@ -89,7 +89,8 @@ class TransformerLayerConfig(object):
                  relpe_type=None,
                  local_scheme=None,
                  power=2,
-                 scaling_d_factor=False):
+                 scaling_d_factor=False,
+                 **kwargs):
         """Constructs TransformerLayerConfig.
 
         Args:
@@ -361,7 +362,7 @@ class BertSelfLocalAttention(BertSelfAttention):
         return context_layer
 
 class BertSelfShiftedLocalAttention(BertSelfLocalAttention):
-    def __init__(self, config: TransformerConfig, layer_number=1):
+    def __init__(self, config, layer_number=1):
         super(BertSelfShiftedLocalAttention,
               self).__init__(config)
         # self.window_size = config.window_size

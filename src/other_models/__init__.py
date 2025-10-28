@@ -1,6 +1,5 @@
-from .modeling import (BertModel, TransformerForPreTraining,
+from .modeling import (BertModel, TransformerConfig, TransformerForPreTraining,
                        TransformerForAANMatching, TransformerForRegression,
                        BertForMaskedLM, BertForNextSentencePrediction,
                        TransformerForSequenceClassification, BertForMultipleChoice,
                        BertForTokenClassification, BertForQuestionAnswering)
-from .transformers import TransformerConfig
