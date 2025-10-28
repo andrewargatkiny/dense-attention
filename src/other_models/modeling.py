@@ -389,7 +389,9 @@ class BertEncoder(nn.Module):
                 n_elem=config.hidden_size // config.num_attention_heads,
                 sep_head_dim=True
             )
-
+            layer = BertLayer(config)
+            self.layer = nn.ModuleList(
+                [copy.deepcopy(layer) for _ in range(config.num_hidden_layers)])
             # logic for local attention scheme
             if hasattr(config, 'local_scheme') and config.local_scheme:
                 scheme = config.local_scheme.split('_')
@@ -398,9 +400,6 @@ class BertEncoder(nn.Module):
                     if code not in valid_codes:
                         raise ValueError(f"Unknown attention type code '{code}' in local_scheme. "
                                             f"Valid codes are: {sorted(list(valid_codes))}")
-                layer = BertLayer(config)
-                self.layer = nn.ModuleList(
-                    [copy.deepcopy(layer) for _ in range(config.num_hidden_layers)])
                 for i, layer_module in enumerate(self.layer):
                     code = scheme[i % len(scheme)]
                     if code == 'l':
