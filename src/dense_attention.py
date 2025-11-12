@@ -7,6 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.attention.flex_attention import create_block_mask, flex_attention
 
+from src.causal_convolution import SlidingFixedConvolution
 from src.model_config import ModelConfig
 from src.positional_embeddings import RelPEBase
 
@@ -15,7 +16,7 @@ class DenseAttention(nn.Module):
     """Efficient implementation of DenseAttention module"""
 
     def __init__(self, config: ModelConfig, local=False,
-                 inference=False, layer_number=0):
+                 inference=False, layer_number=0, dilated=False, use_short_conv=False):
         super().__init__()
         self.n_heads = config.num_attention_heads
         if local == "softmax" and not config.hybrid: raise NotImplementedError(
@@ -34,6 +35,9 @@ class DenseAttention(nn.Module):
             torch.zeros(self.hidden_size, self.hidden_size)
         )
         self.dropout = nn.Dropout(config.attention_probs_dropout_prob)
+        self.dilated = dilated
+        if dilated:
+            self.window_size = config.window_size
 
         # Hyperparams for Causal Language Modeling
         self.causal = config.causal
@@ -44,6 +48,9 @@ class DenseAttention(nn.Module):
         if local == 'global':
             self.local = False
         if self.local:
+            if self.dilated:
+                raise ValueError("Dilated pattern is supported only for global"
+                                 " attention for now.")
             self.window_size = config.window_size
             assert config.max_position_embeddings % self.window_size == 0
             assert self.window_size % 2 == 0 and self.window_size > 0
@@ -75,6 +82,8 @@ class DenseAttention(nn.Module):
         # attention.
         if self.causal:
             self.attention_kernel = self._causal_attn
+            if self.local == 'atomicsw':
+                self.attention_kernel = self._sw_atomic_heads
             if self.local == 'softmax':
                 self.attention_kernel = self._softmax_sw_attn
         elif self.attention_complexity == 'linear':
@@ -95,13 +104,15 @@ class DenseAttention(nn.Module):
                 self.forward = self.forward_shifted_local
             elif self.local == "sliding_window":
                 self.forward = self.forward_sliding_window
+            elif self.local == "atomicsw":
+                self.forward = self.forward_sw_atomic_heads
             elif self.local == "softmax":
                 self.forward = self.forward_global
             else:
                 raise ValueError(
                     f"`local` argument should take one of these values: "
                     f" [False, None, 'global, 'local', 'shifted_local', "
-                    f"'sliding_window'], but your provided value is "
+                    f"'sliding_window', 'atomicsw'], but your provided value is "
                     f"'{self.attention_complexity}'."
                 )
             # For full local attention the complexity is overridden to be
@@ -113,11 +124,14 @@ class DenseAttention(nn.Module):
                 )
                 self.attention_complexity = "auto"
                 self.attention_kernel = self._full_auto_attn
-        # 2. Option for global causal attention via efficient O(N) chunk-wise
+        # 2. Option for global dilated attention (can be both causal and full).
+        elif self.dilated:
+            self.forward = self.forward_dilated
+        # 3. Option for global causal attention via efficient O(N) chunk-wise
         # parallel algorithm.
         elif self.causal:
             self.forward = self.forward_causal
-        # 3. Option for global full attention. Also serves as a fallback option
+        # 4. Option for global full attention. Also serves as a fallback option
         # for global O(N^2) causal attention.
         else:
             self.forward = self.forward_global
@@ -130,7 +144,7 @@ class DenseAttention(nn.Module):
             self.relpe_func = self._apply_global_relpe
 
         # Selection of where to apply RelPE
-        relpe_keys = {None, False, 'qkv', 'q', 'k', 'v'}
+        relpe_keys = {None, False, '', 'qkv', 'q', 'k', 'v'}
         if not config.relpe_scheme:
             self.relpe_scheme = []
         else:
@@ -186,6 +200,12 @@ class DenseAttention(nn.Module):
                                  f" 'sliding_window' type of local attention, "
                                  f"{self.local} was provided instead.")
             self.forward = self.forward_inference
+
+        self.use_short_conv = use_short_conv
+        if use_short_conv:
+            self.q_conv = SlidingFixedConvolution(config)
+            self.k_conv = SlidingFixedConvolution(config)
+            self.v_conv = SlidingFixedConvolution(config)
 
     def forward_inference(self):
         pass
@@ -261,6 +281,20 @@ class DenseAttention(nn.Module):
         # pre_attn: Batch, ..., SeqLen, SeqLen
         attention = torch.matmul(pre_attn, values)
         # attention: Batch, ..., SeqLen, EmbedDim
+        return attention
+
+    def _sw_atomic_heads(self, queries: torch.Tensor,
+                         keys: torch.Tensor,
+                         values: torch.Tensor) -> torch.Tensor:
+        """Sliding Window DenseAttention forward with linear O(N*d)
+        time complexity w.r.t sequence length suitable in case where number of
+        heads is equal to the size of embedding dimensions."""
+        # queries, values: Batch, ..., SeqLen, EmbedDim
+        # keys: Batch, ..., EmbedDim, SeqLen
+        kv = keys.transpose(-2, -1) * values
+        pre_attn = kv.cumsum(dim=-2)
+        pre_attn[..., self.window_size:, :] -= pre_attn[..., :-self.window_size, :]
+        attention = queries * pre_attn
         return attention
 
     def _softmax_sw_attn(self, queries: torch.Tensor,
@@ -351,6 +385,27 @@ class DenseAttention(nn.Module):
         # shape: Batch, Chunk, ..., ChunkLen, EmbedDim
         return global_attention
 
+    def _add_sw_atomic_heads_context(
+            self, queries: torch.Tensor, keys: torch.Tensor,
+            values: torch.Tensor, local_attention: torch.Tensor
+        ) -> torch.Tensor:
+        # queries, values, local_attention: Batch, Chunk, ..., ChunkLen, EmbedDim
+        # keys: Batch, Chunk, ..., EmbedDim, ChunkLen
+        # EmbedDim can be a HeadDim in case of multiple heads.
+        # Instead of <...> there can be zero or one (Head) dimension
+        # if we use multi-head attention.
+        queries = queries[..., :self.window_size - 1:, :]
+        keys = keys[..., -self.window_size:].transpose(-2, -1).roll(shifts=1, dims=1)
+        values = values[..., -self.window_size:, :].roll(shifts=1, dims=1)
+        kv = keys * values
+        kv[:, 0, ...] = 0
+        pre_attn = kv.cumsum(dim=-2)
+        pre_attn = pre_attn[..., -1:, :] - pre_attn[..., :-1, :]
+        attention = queries * pre_attn
+        local_attention[..., :self.window_size - 1, :] += attention
+        # shape: Batch, Chunk, ..., ChunkLen, EmbedDim
+        return local_attention
+
     ###########################################################################
     # High-level DenseAttention forwards (full, causal, local, shifted local).
     ###########################################################################
@@ -365,9 +420,15 @@ class DenseAttention(nn.Module):
         size = hidden_states.size()
         seq_len = size[1]
         queries = F.linear(hidden_states, self.queries)
+        keys = hidden_states
+        values = hidden_states
+        if self.use_short_conv:
+            queries = self.q_conv(queries)
+            keys = self.k_conv(keys)
+            values = self.v_conv(values)
         queries = self.apply_q_global_relpe(rope_cache, queries)
-        keys = self.apply_k_global_relpe(rope_cache, hidden_states)
-        values = self.apply_v_global_relpe(rope_cache, hidden_states)
+        keys = self.apply_k_global_relpe(rope_cache, keys)
+        values = self.apply_v_global_relpe(rope_cache, values)
         # queries: Batch, SeqLen, EmbedDim
 
         # Possibly reshape and permute the sequence in case of multi-head
@@ -406,6 +467,24 @@ class DenseAttention(nn.Module):
         return self._forward_chunked(hidden_states, self._add_dummy_context,
                                      self.window_size, rope_cache)
 
+    def forward_dilated(self, hidden_states: torch.Tensor,
+                      rope_cache: RelPEBase = None) -> torch.Tensor:
+        """Computes dilated DenseAttention over sequence chunked into
+        subsequences of size `self.window_size`."""
+        bs, seq_len, dim = hidden_states.size()
+        # hidden_states: Batch, SeqLen, EmbedDim
+        num_windows = seq_len // self.window_size
+        hidden_states = hidden_states.view(bs, -1, self.window_size, dim)
+        # hidden_states: Batch, Chunk, ChunkLen, EmbedDim
+        # swap window and num_windows dims for dilated attention, then merge
+        # them back into one.
+        hidden_states = hidden_states.transpose(-2, -3).reshape(bs, seq_len, dim)
+        hidden_states = self._forward_chunked(hidden_states, self._add_dummy_context,
+                                     num_windows, rope_cache)
+        hidden_states = hidden_states.view(bs, self.window_size, -1, dim)
+        hidden_states = hidden_states.transpose(-2, -3).reshape(bs, seq_len, dim)
+        return hidden_states
+
     def forward_shifted_local(self, hidden_states: torch.Tensor,
                               rope_cache=None) -> torch.Tensor:
         """Computes local DenseAttention over windows shifted by `self.window_size / 2`
@@ -426,6 +505,17 @@ class DenseAttention(nn.Module):
         return self._forward_chunked(hidden_states,
                                      self._add_sliding_window_context,
                                      self.window_size, rope_cache)
+
+    def forward_sw_atomic_heads(self, hidden_states: torch.Tensor,
+                                rope_cache: RelPEBase = None) -> torch.Tensor:
+        """Computes Sliding Window DenseAttention (window size is
+        `self.window_size`) over sequence chunked into subsequences of size
+        `self.chunk_size`, with an assumption that number of heads is equal to
+        the size of embedding dimension."""
+        return self._forward_chunked(hidden_states,
+                                     self._add_sw_atomic_heads_context,
+                                     self.chunk_size, rope_cache)
+
 
     def _forward_chunked(self, hidden_states: torch.Tensor,
                          add_context_f: Callable,
@@ -455,17 +545,22 @@ class DenseAttention(nn.Module):
             )
             hidden_states = torch.cat([hidden_states, remainder], dim=1)
             num_chunks += 1
-
         queries = F.linear(hidden_states, self.queries)
+        keys = hidden_states
+        values = hidden_states
+        if self.use_short_conv:
+            queries = self.q_conv(queries)
+            keys = self.k_conv(keys)
+            values = self.v_conv(values)
         queries = self.apply_q_relpe(
             rope_cache, queries, chunk_size, num_chunks
         )
         # shape: Batch, SeqLen, EmbedDim
         keys = self.apply_k_relpe(
-            rope_cache, hidden_states, chunk_size, num_chunks
+            rope_cache, keys, chunk_size, num_chunks
         )
         values = self.apply_v_relpe(
-            rope_cache, hidden_states, chunk_size, num_chunks
+            rope_cache, values, chunk_size, num_chunks
         )
         # shape: Batch, SeqLen, EmbedDim
         new_size = [size[0], num_chunks, chunk_size] + self.head_dims
