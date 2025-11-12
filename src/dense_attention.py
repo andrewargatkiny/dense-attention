@@ -7,7 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.attention.flex_attention import create_block_mask, flex_attention
 
-from src.causal_convolution import SlidingFixedConvolution
+from src.causal_convolution import SlidingFixedConvolution, CausalConv1d
 from src.model_config import ModelConfig
 from src.positional_embeddings import RelPEBase
 
@@ -203,9 +203,9 @@ class DenseAttention(nn.Module):
 
         self.use_short_conv = use_short_conv
         if use_short_conv:
-            self.q_conv = SlidingFixedConvolution(config)
-            self.k_conv = SlidingFixedConvolution(config)
-            self.v_conv = SlidingFixedConvolution(config)
+            self.q_conv = CausalConv1d(config)
+            self.k_conv = CausalConv1d(config)
+            self.v_conv = CausalConv1d(config)
 
     def forward_inference(self):
         pass
@@ -425,7 +425,7 @@ class DenseAttention(nn.Module):
         if self.use_short_conv:
             queries = self.q_conv(queries)
             keys = self.k_conv(keys)
-            values = self.v_conv(values)
+            values = keys
         queries = self.apply_q_global_relpe(rope_cache, queries)
         keys = self.apply_k_global_relpe(rope_cache, keys)
         values = self.apply_v_global_relpe(rope_cache, values)
@@ -551,7 +551,7 @@ class DenseAttention(nn.Module):
         if self.use_short_conv:
             queries = self.q_conv(queries)
             keys = self.k_conv(keys)
-            values = self.v_conv(values)
+            values = keys
         queries = self.apply_q_relpe(
             rope_cache, queries, chunk_size, num_chunks
         )

@@ -1,3 +1,5 @@
+import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -48,13 +50,22 @@ class CausalConv1d(nn.Module):
         self.in_channels = config.hidden_size
         self.out_channels = config.hidden_size
 
-        # modules:
-        self.conv1d = torch.nn.Conv1d(self.in_channels, self.out_channels,
-                                      kernel_size,
-                                      padding=(kernel_size - 1),
-                                      groups=self.in_channels, bias=False)
+        if kernel_size == 4:
+            self.forward = self._size_4_forward
+            self.weight = nn.Parameter(
+                torch.zeros(size=(self.kernel_size, self.in_channels))
+            )
+            nn.init.uniform_(self.weight, -0.5, 0.5)
+        else:
+            self.conv1d = torch.nn.Conv1d(self.in_channels, self.out_channels,
+                                          kernel_size,
+                                          padding=(kernel_size - 1),
+                                          groups=self.in_channels, bias=False)
 
-    def forward(self, x):
+            self.forward = self._causal_conv
+
+
+    def _causal_conv(self, x):
         """
         Note that Conv1d expects (batch, in_channels, in_length).
         We assume that x ~ (batch, in_length, in_channels), so we'll reshape it first.
@@ -63,4 +74,24 @@ class CausalConv1d(nn.Module):
         conv1d_out = self.conv1d(x).transpose(-2, -1)
         # remove k-1 values from the end:
         return conv1d_out[:, 0:-(self.kernel_size - 1), :]
+
+    def _size_4_forward(self, hidden_states):
+        # hidden_states: Batch, SeqLen, EmbedDim
+        bs, seq_len, dim = hidden_states.size()
+        pad = torch.zeros_like(hidden_states[..., :3, :])
+        l = math.ceil(seq_len / 4) * 4
+        padded_states = torch.cat([pad, hidden_states, pad], dim=-2)
+        states_0 = padded_states[..., :l, :].view(bs, 1, -1, 4, dim)
+        states_1 = padded_states[..., 1:1 + l, :].view(bs, 1, -1, 4, dim)
+        states_2 = padded_states[..., 2:2 + l, :].view(bs, 1, -1, 4, dim)
+        states_3 = padded_states[..., 3:3 + l, :].view(bs, 1, -1, 4, dim)
+        # states_i: Batch, Shift (1), SubSeq, KerLen (4), EmbedDim
+
+        states = torch.cat([states_0, states_1, states_2, states_3], dim=-4)
+        states = states.transpose(-4, -3)
+        # states: Batch, SubSeq, Shift (4), KerLen (4), EmbedDim
+        states = self.weight * states
+        states = states.sum(dim=-2)
+        # states: Batch, SubSeq, Shift (4), EmbedDim
+        return states.reshape(bs, -1, dim)[..., :seq_len, :]
 
