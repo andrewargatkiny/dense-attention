@@ -56,6 +56,13 @@ class CausalConv1d(nn.Module):
                 torch.zeros(size=(self.kernel_size, self.in_channels))
             )
             nn.init.uniform_(self.weight, -0.5, 0.5)
+        elif kernel_size == 8:
+            self.forward = self._size_k_forward
+            bound = 1 / math.sqrt(self.kernel_size)
+            self.weight = nn.Parameter(
+                torch.zeros(size=(self.kernel_size, self.in_channels))
+            )
+            nn.init.uniform_(self.weight, -bound, bound)
         else:
             self.conv1d = torch.nn.Conv1d(self.in_channels, self.out_channels,
                                           kernel_size,
@@ -95,3 +102,24 @@ class CausalConv1d(nn.Module):
         # states: Batch, SubSeq, Shift (4), EmbedDim
         return states.reshape(bs, -1, dim)[..., :seq_len, :]
 
+    def _size_k_forward(self, hidden_states):
+        # hidden_states: Batch, SeqLen, EmbedDim
+        bs, seq_len, dim = hidden_states.size()
+        k = self.kernel_size
+        pad = torch.zeros_like(hidden_states[..., :k, :])
+        l = math.ceil(seq_len / k) * k
+        padded_states = torch.cat([pad, hidden_states, pad], dim=-2)
+        states_arr = []
+        for i in range(k):
+            states_arr.append(
+                padded_states[..., i:l + i, :].view(bs, 1, -1, k, dim)
+            )
+        # states_i: Batch, Shift (1), SubSeq, KerLen (k), EmbedDim
+
+        states = torch.cat(states_arr, dim=-4)
+        states = states.transpose(-4, -3)
+        # states: Batch, SubSeq, Shift (k), KerLen (k), EmbedDim
+        states = self.weight * states
+        states = states.sum(dim=-2)
+        # states: Batch, SubSeq, Shift (k), EmbedDim
+        return states.reshape(bs, -1, dim)[..., :seq_len, :]
