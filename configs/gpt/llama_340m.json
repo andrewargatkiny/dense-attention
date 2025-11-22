@@ -25,9 +25,7 @@
         "training": {
             "hf_sources": [
                 {
-                    "name": "HuggingFaceFW/fineweb-edu",
-                    "subset": "sample-100BT",
-                    "split": "train",
+                    "name": "fineweb-edu/sample/100BT",
                     "chunk_size": 600000
                 }
             ],
@@ -54,10 +52,7 @@
         "test": {
             "hf_sources": [
                 {
-                    "name": "HuggingFaceFW/fineweb-edu",
-                    "subset": null,
-                    "split": "train",
-                    "offset": 10000,
+                    "name": "fineweb-edu/sample/test/",
                     "chunk_size": 75000
                 }
             ],
