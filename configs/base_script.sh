@@ -1,12 +1,10 @@
 #!/bin/bash
 
 base_dir=`pwd`
-SEED=${SEED:-100}
-NODE=${NODE:-0}
 MASTER_PORT=${MASTER_PORT:-29500}
 TRACKING_SYSTEM=${TRACKING_SYSTEM:-clearml}
 
-for var in CONFIG DS_CONFIG BASE_JOB_NAME DATA_PATH_PREFIX PROJECT_NAME; do
+for var in CONFIG DS_CONFIG BASE_JOB_NAME DATA_PATH_PREFIX PROJECT_NAME TASK_TYPE SEED; do
   value=${!var}
   if [ -z "$value" ]; then
     echo "error: required variable $var is not set."
@@ -90,11 +88,13 @@ fi
 
 mkdir -p "$OUTPUT_DIR"
 
-EXTRA_ARGS=()
-
-if [ -n "${TASK_TYPE:-}" ]; then
-  EXTRA_ARGS+=( --task_type "$TASK_TYPE" )
+if [ -n "${NODE:-}" ]; then
+  NODE_ARG="--include localhost:$NODE"
+else
+  NODE_ARG=""
 fi
+
+EXTRA_ARGS=()
 
 if [ -n "${CHECKPOINT_BASE_PATH:-}" ]; then
   EXTRA_ARGS+=( --load_training_checkpoint "$CHECKPOINT_BASE_PATH" )
@@ -107,31 +107,59 @@ if [ ${#OVERRIDE_ARGS[@]} -gt 0 ]; then
   EXTRA_ARGS+=( --override "${OVERRIDE_ARGS[@]}" )
 fi
 
-NCCL_TREE_THRESHOLD=0 deepspeed --include localhost:"$NODE" --master_port "$MASTER_PORT" "${base_dir}/deepspeed_train.py" \
+NCCL_TREE_THRESHOLD=0 deepspeed $NODE_ARG --master_port "$MASTER_PORT" "${base_dir}/deepspeed_train.py" \
   --cf "$CONFIG" \
   --model_config_file "${MODEL_CONFIG:-$CONFIG}" \
   --data_config_file "${DATA_CONFIG:-$CONFIG}" \
   --train_config_file "${TRAINING_CONFIG:-$CONFIG}" \
-  ${TASK_TYPE:+--task_type "$TASK_TYPE"} \
-  --max_seq_length "${MAX_SEQ_LENGTH:-1024}" \
+  --task_type "$TASK_TYPE" \
   --output_dir "$OUTPUT_DIR" \
-  --deepspeed \
-  --dense_attention \
-  --eval_train_data \
-  --eval_test_data \
-  --max_validation_samples 20000 \
-  --log_diagnostic_freq 5 \
-  --log_activations \
+  ${DEEPSPEED:+--deepspeed} \
+  ${DENSE_ATTENTION:+--dense_attention} \
+  ${EVAL_TRAIN_DATA:+--eval_train_data} \
+  ${EVAL_TEST_DATA:+--eval_test_data} \
+  ${NO_EVAL_VAL_DATA:+--no_eval_val_data} \
+  ${EVAL_ONLY:+--eval_only} \
+  ${ONLY_MLM_TASK:+--only_mlm_task} \
+  ${ONLY_CLS_TASK:+--only_cls_task} \
+  ${NO_DECAY_EMBEDDINGS:+--no_decay_embeddings} \
+  ${NO_DECAY_POOLER:+--no_decay_pooler} \
+  ${SCALE_FFN_WEIGHTS:+--scale_ffn_weights} \
+  ${MATERIALIZE_FFN_WEIGHTS:+--materialize_ffn_weights} \
+  ${LOAD_ONLY_WEIGHTS:+--load_only_weights} \
+  ${REWARMUP:+--rewarmup} \
+  ${LOG_WEIGHT_NORMS:+--log_weight_norms} \
+  ${USE_SHARDED_DATASET:+--use_sharded_dataset} \
+  ${LOG_ACTIVATIONS:+--log_activations} \
+  ${RESIZE_POSIT_EMBEDS:+--resize_posit_embeds} \
+  ${UNPAD_INPUTS:+--unpad_inputs} \
+  ${USE_TORCH_COMPILE:+--use_torch_compile} \
+  ${VARIABLE_MASK_RATE:+--variable_mask_rate} \
+  ${MLM_USE_RTC_TASK:+--mlm_use_rtc_task} \
+  ${ZERO_INIT_POOLER:+--zero_init_pooler} \
+  --max_validation_samples "${MAX_VALIDATION_SAMPLES:--1}" \
+  --log_diagnostic_freq "${LOG_DIAGNOSTIC_FREQ:-100}" \
   --tracking_system "$TRACKING_SYSTEM" \
   --seed "$SEED" \
   --job_name "$JOB_NAME" \
   --deepspeed_config "$DS_CONFIG" \
   --data_path_prefix "$DATA_PATH_PREFIX" \
-  --eval_bs_ratio 2 \
-  --inputs_logging_ratio 0.1 \
-  --keep_last_ckpts 3 \
-  --ckpt_to_save 1 \
+  --eval_bs_ratio "${EVAL_BS_RATIO:-8}" \
+  --inputs_logging_ratio "${INPUTS_LOGGING_RATIO:-1.0}" \
+  --keep_last_ckpts "${KEEP_LAST_CKPTS:-3}" \
+  --ckpt_to_save "${CKPT_TO_SAVE:-20}" \
   --project_name "$PROJECT_NAME" \
-  ${DEEPSPEED_ARGS} \
+  ${MAX_STEPS:+--max_steps "$MAX_STEPS"} \
+  ${MAX_STEPS_PER_EPOCH:+--max_steps_per_epoch "$MAX_STEPS_PER_EPOCH"} \
+  ${LOGGING_NORM_TYPE:+--logging_norm_type "$LOGGING_NORM_TYPE"} \
+  ${VALIDATION_DATA_PATH_PREFIX:+--validation_data_path_prefix "$VALIDATION_DATA_PATH_PREFIX"} \
+  ${THROUGHPUT_LOGGING_SAMPLES:+--throughput_logging_samples "$THROUGHPUT_LOGGING_SAMPLES"} \
+  ${KEEP_CKPT_EVERY:+--keep_ckpt_every "$KEEP_CKPT_EVERY"} \
+  ${KEEP_CKPT_EPOCHS:+--keep_ckpt_epochs "$KEEP_CKPT_EPOCHS"} \
+  ${NUM_LABELS:+--num_labels "$NUM_LABELS"} \
+  ${LM_PROB:+--lm_prob "$LM_PROB"} \
+  ${MASK_TOKEN_ID:+--mask_token_id "$MASK_TOKEN_ID"} \
+  ${DICT_BACKEND:+--dict_backend "$DICT_BACKEND"} \
+  ${MAX_PREDICTIONS_PER_SEQ:+--max_predictions_per_seq "$MAX_PREDICTIONS_PER_SEQ"} \
   "${EXTRA_ARGS[@]}" \
   &> "${JOB_NAME}.log"
