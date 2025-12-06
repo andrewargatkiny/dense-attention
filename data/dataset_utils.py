@@ -267,6 +267,8 @@ class ShardedDatasetWrapper:
                 source["chunk_size"] = self.chunk_sizes[source["name_or_path"]]
                 source["world_size"] = self.world_size
                 source["global_rank"] = self.global_rank
+                if dataset_config.get("add_base_dir", False):
+                    source["name_or_path"] = os.path.join(self.dataset_path, source["name_or_path"])
                 self.logger.info(
                     f"ShardedDatasetWrapper - {tag} dataset offsets: "
                     f"{offset_or_datafile}"
