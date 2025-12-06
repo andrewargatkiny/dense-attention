@@ -478,6 +478,8 @@ class BertOnlyMLMDataset(Dataset):
                 print(time.ctime(), f"Started loading data"
                                     f"{source['name_or_path']} dataset, "
                                     f"offset {source.get('offset', 0)}")
+                if dataset_config.get("add_base_dir", False):
+                    source["name_or_path"] = os.path.join(base_dir, source["name_or_path"])
             ds = load_datasets(dataset_config["sources"], seed=self.seed)
             sep_token = self.tokenizer.sep_token
             def add_sep_tok(example):
@@ -610,6 +612,8 @@ class GPTPretrainingDataset(Dataset):
                 print(time.ctime(), f"Started loading data "
                                     f"{source['name']} dataset, "
                                     f"offset {source.get('offset', 0)}")
+                if dataset_config.get("add_base_dir", False):
+                    source["name_or_path"] = os.path.join(base_dir, source["name_or_path"]) 
             ds = load_datasets(dataset_config["sources"], seed=self.seed)
             eos_token = self.tokenizer.eos_token
             def strip_add_eos_tok(example):
