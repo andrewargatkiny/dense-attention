@@ -36,8 +36,8 @@ class DenseAttention(nn.Module):
         )
         self.dropout = nn.Dropout(config.attention_probs_dropout_prob)
         self.dilated = dilated
-        if dilated:
-            self.window_size = config.window_size
+        if self.dilated:
+            self.dilation_size = config.dilation_size
 
         # Hyperparams for Causal Language Modeling
         self.causal = config.causal
@@ -470,18 +470,17 @@ class DenseAttention(nn.Module):
     def forward_dilated(self, hidden_states: torch.Tensor,
                       rope_cache: RelPEBase = None) -> torch.Tensor:
         """Computes dilated DenseAttention over sequence chunked into
-        subsequences of size `self.window_size`."""
+        subsequences of size `self.dilation_size`."""
         bs, seq_len, dim = hidden_states.size()
         # hidden_states: Batch, SeqLen, EmbedDim
-        num_windows = seq_len // self.window_size
-        hidden_states = hidden_states.view(bs, -1, self.window_size, dim)
+        num_windows = seq_len // self.dilation_size
+        hidden_states = hidden_states.view(bs, -1, self.dilation_size, dim)
         # hidden_states: Batch, Chunk, ChunkLen, EmbedDim
         # swap window and num_windows dims for dilated attention, then merge
-        # them back into one.
-        hidden_states = hidden_states.transpose(-2, -3).reshape(bs, seq_len, dim)
-        hidden_states = self._forward_chunked(hidden_states, self._add_dummy_context,
-                                     num_windows, rope_cache)
-        hidden_states = hidden_states.view(bs, self.window_size, -1, dim)
+        # them batch and window dims into one.
+        hidden_states = hidden_states.transpose(-2, -3).reshape(bs * self.dilation_size, num_windows, dim)
+        hidden_states = self.forward_causal(hidden_states, rope_cache)
+        hidden_states = hidden_states.view(bs, self.dilation_size, -1, dim)
         hidden_states = hidden_states.transpose(-2, -3).reshape(bs, seq_len, dim)
         return hidden_states
 

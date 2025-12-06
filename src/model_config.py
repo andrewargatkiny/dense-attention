@@ -47,6 +47,7 @@ class ModelConfig(object):
                  chunk_size=1024,
                  local_attention=False,
                  window_size=1024,
+                 dilation_size=8,
                  local_relpe=True,
                  local_scheme="l_sl_g",
                  hybrid=False,
@@ -134,6 +135,8 @@ class ModelConfig(object):
                 attention layers scheme. Default: `False`.
             window_size: length of local attention span in local attention
                 layers. Default: 1024.
+            dilation_size: lengh of dilation window in dilated attention
+                layers. Default: 8.
             local_relpe: Applicable only for `local` and `shifted_local` types
                 of layer. For them, it indicates whether to apply RelPE using
                 local or global indices along sequence dimension. Default:
@@ -196,6 +199,7 @@ class ModelConfig(object):
             self.chunk_size = chunk_size
             self.local_attention = local_attention
             self.window_size = window_size
+            self.dilation_size = dilation_size
             self.local_relpe = local_relpe
             self.local_scheme = local_scheme
             self.hybrid = hybrid
