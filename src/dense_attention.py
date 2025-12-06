@@ -650,6 +650,8 @@ class DenseAttention(nn.Module):
             info += f", local_type={self.local}, window_size={self.window_size}"
         if not self.causal:
             info += f", complexity={self.attention_complexity}"
+        if self.dilated:
+            info += f", dilated={self.dilated}, dilation_size={self.dilation_size}"
         return info
 
 def sliding_window_mask(b, h, q_idx, kv_idx):
