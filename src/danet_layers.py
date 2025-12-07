@@ -134,5 +134,5 @@ class DANetLayerWrapper(nn.Module):
             if module.bias is not None:
                 module.bias.data.zero_()
 
-    def forward(self, hidden_states, attention_mask, rope_cache=None):
-        return self.layer(hidden_states, attention_mask, rope_cache)
+    def forward(self, hidden_states, attention_mask, rope_cache=None, **kwargs):
+        return self.layer(hidden_states, attention_mask, rope_cache, **kwargs)

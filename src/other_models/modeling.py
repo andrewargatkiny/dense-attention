@@ -352,25 +352,25 @@ class BertEncoder(nn.Module):
                 modules.append(module)
                 if i < len(ordered_names):
                     self.layers_configs.append(final_layer_params)
-                    if (final_layer_params.get("pos_emb_type") == PositionalEmbeddingsTypes.RELPE and
-                            final_layer_params.get("relpe_type") is not None):
-                        relpe_type = RelPEType[final_layer_params["relpe_type"].upper()]
+                    if (layer_config.pos_emb_type == PositionalEmbeddingsTypes.RELPE and
+                            layer_config.relpe_type is not None):
+                        relpe_type = RelPEType[layer_config.relpe_type.upper()]
                     else:
                         relpe_type = RelPEType.DUMMY
 
                     relpe_class = RelPETypeToClass[relpe_type]
                     if layer_type == "danet":
                         rope_cache = relpe_class(
-                            seq_len=final_layer_params["max_position_embeddings"],
-                            n_elem=final_layer_params["hidden_size"] // final_layer_params["num_attention_heads"],
-                            num_heads=final_layer_params["num_attention_heads"],
+                            seq_len=layer_config.max_position_embeddings,
+                            n_elem=layer_config.hidden_size // layer_config.num_attention_heads,
+                            num_heads=layer_config.num_attention_heads,
                             sep_head_dim=False
                         )
                     else:
                         rope_cache = relpe_class(
-                            seq_len=final_layer_params["max_position_embeddings"],
-                            n_elem=final_layer_params["hidden_size"] // final_layer_params["num_attention_heads"],
-                            num_heads=final_layer_params["num_attention_heads"],
+                            seq_len=layer_config.max_position_embeddings,
+                            n_elem=layer_config.hidden_size // layer_config.num_attention_heads,
+                            num_heads=layer_config.num_attention_heads,
                             sep_head_dim=True
                         )
                     rope_caches.append(rope_cache)
@@ -429,7 +429,7 @@ class BertEncoder(nn.Module):
                 attention_mask /
                 attention_mask.sum(axis=-1, keepdim=True).pow(1. / 3)
             ).to(dtype).unsqueeze(-1)
-            if layer_config["local_scheme"] in ["l", "sl"]:
+            if layer_config["local_scheme"] in ["l", "sl", "swa"]:
                 local_attention_mask = (
                         attention_mask / layer_config["window_size"] ** (1. / 3)
                 ).to(dtype).unsqueeze(-1)
@@ -461,7 +461,7 @@ class BertEncoder(nn.Module):
             hidden_states = layer_module(
                 hidden_states, 
                 attention_mask=masks[idx] if hasattr(self, "layers_configs") else attention_mask,
-                rope_cache= self.rope_caches[idx] if hasattr(self, "rope_caches") else self.rope_cache,
+                rope_cache= self.rope_caches[idx] if hasattr(self, "rope_caches") else self.rope_cache,  #this line works only if rope caches have no learnable parameters.
                   **kwargs) 
             if output_all_encoded_layers:
                 all_encoder_layers.append(hidden_states)
