@@ -149,8 +149,8 @@ class TransformerConfig(object):
             layers_scheme: Defines the sequence and repetition of layers within the encoder.
                 This should be a string of layer names separated by underscores
                 (e.g., 'layer1_layer2_layer1_layer3'). Each name must correspond to a unique `layer_name`
-                key in one of the configuration dictionaries provided in the layers parameter.
-                power: For Power Attention, determines the power (p).
+                key in one of the configuration dictionaries provided in the  `layers` parameter.
+            power: For Power Attention, determines the power (p).
             scaling_d_factor: For Power Attention, determines whether to scale q,k by a
                 predetermined scaling factor depending on d for additional numerical
                 stability.
@@ -180,10 +180,7 @@ class TransformerConfig(object):
             self.attention_probs_dropout_prob = attention_probs_dropout_prob
             self.attn_proj_biases = attn_proj_biases
             self.max_position_embeddings = max_position_embeddings
-            if layers is None:
-                self.pos_emb_type = PositionalEmbeddingsTypes[pos_emb_type.upper()]
-            else:
-                self.pos_emb_type = pos_emb_type
+            self.pos_emb_type = PositionalEmbeddingsTypes[pos_emb_type.upper()]
             self.relpe_type = relpe_type
             self.type_vocab_size = type_vocab_size
             self.initializer_range = initializer_range
@@ -348,35 +345,37 @@ class BertEncoder(nn.Module):
                 for param_name in init_params:
                     if param_name not in final_layer_params and hasattr(config, param_name):
                         final_layer_params[param_name] = getattr(config, param_name)
-                
-                layer_config = config_class(**final_layer_params)
-                
-                if (final_layer_params.get("pos_emb_type") == PositionalEmbeddingsTypes.RELPE and
-                        final_layer_params.get("relpe_type") is not None):
-                    relpe_type = RelPEType[final_layer_params["relpe_type"].upper()]
-                else:
-                    relpe_type = RelPEType.DUMMY
-
-                relpe_class = RelPETypeToClass[relpe_type]
-                if layer_type == "danet":
-                    rope_cache = relpe_class(
-                        seq_len=final_layer_params["max_position_embeddings"],
-                        n_elem=final_layer_params["hidden_size"] // final_layer_params["num_attention_heads"],
-                        sep_head_dim=False
-                    )
-                else:
-                    rope_cache = relpe_class(
-                        seq_len=final_layer_params["max_position_embeddings"],
-                        n_elem=final_layer_params["hidden_size"] // final_layer_params["num_attention_heads"],
-                        sep_head_dim=True
-                    )
-                rope_caches.append(rope_cache)
 
                 layer_class = LayerTypeToClass[layer_type]
+                layer_config = config_class(**final_layer_params)
                 module = layer_class(layer_config)
                 modules.append(module)
                 if i < len(ordered_names):
                     self.layers_configs.append(final_layer_params)
+                    if (final_layer_params.get("pos_emb_type") == PositionalEmbeddingsTypes.RELPE and
+                            final_layer_params.get("relpe_type") is not None):
+                        relpe_type = RelPEType[final_layer_params["relpe_type"].upper()]
+                    else:
+                        relpe_type = RelPEType.DUMMY
+
+                    relpe_class = RelPETypeToClass[relpe_type]
+                    if layer_type == "danet":
+                        rope_cache = relpe_class(
+                            seq_len=final_layer_params["max_position_embeddings"],
+                            n_elem=final_layer_params["hidden_size"] // final_layer_params["num_attention_heads"],
+                            num_heads=final_layer_params["num_attention_heads"],
+                            sep_head_dim=False
+                        )
+                    else:
+                        rope_cache = relpe_class(
+                            seq_len=final_layer_params["max_position_embeddings"],
+                            n_elem=final_layer_params["hidden_size"] // final_layer_params["num_attention_heads"],
+                            num_heads=final_layer_params["num_attention_heads"],
+                            sep_head_dim=True
+                        )
+                    rope_caches.append(rope_cache)
+
+                
             
             self.rope_caches = nn.ModuleList(rope_caches)
             self.layer = nn.ModuleList(modules)
@@ -458,10 +457,11 @@ class BertEncoder(nn.Module):
                 masks.append(self.prepare_mask(hidden_states, attention_mask, self.layers_configs[i]))
         all_encoder_layers = []
         for i, layer_module in enumerate(self.layer):
+            idx = i % num_layers_configs
             hidden_states = layer_module(
                 hidden_states, 
-                attention_mask=masks[i % num_layers_configs] if hasattr(self, "layers_configs") else attention_mask,
-                rope_cache= self.rope_caches[i % num_layers_configs] if hasattr(self, "rope_caches") else self.rope_cache,
+                attention_mask=masks[idx] if hasattr(self, "layers_configs") else attention_mask,
+                rope_cache= self.rope_caches[idx] if hasattr(self, "rope_caches") else self.rope_cache,
                   **kwargs) 
             if output_all_encoded_layers:
                 all_encoder_layers.append(hidden_states)
