@@ -1,9 +1,52 @@
+# DenseAttention framework
+
+This repo hosts the framework for development, pre-training and evaluation of efficient neural 
+network architectures for language modeling, and sequence processing in general.
+
+What means "efficient" sequence-mixing architecture? 
+
+- Capable of running in sub-quadratic, preferably linear time O(N) w.r.t sequence length N.
+- Having a competitive processing speed not only for extremely long sequences but for short 
+to moderate context sizes (e.g., it should be comparable in throughput to softmax attention/ 
+Transformer at N=128).
+
+Currently, the framework allows for off-the-shelf reuse or rapid prototyping of the following 
+architectures and their compositions:
+
+- DANet and DenseAttention (see below)
+- Transformer (softmax attention)
+- Numerous Linear Attention architectures which conform to framework described in 
+[Transformers are RNNs] (https://arxiv.org/abs/2006.16236)
+- Various locality patterns: Local Attention (also known as Block-Sparse Attention), 
+Shifted-Local Attention, Sliding Window Attention (SWA), which are applicable not only 
+for softmax attention, but for other sequence mixers.
+- Architectures implemented in HuggingFace's Transformers library.
+
+Coming soon:
+- Support for architectures implemented in [FLA framework] (https://github.com/fla-org/flash-linear-attention)
+- S4 and other linear-time-invariant SSMs.
+
+Tasks supported by the framework:
+- Masked Language (or Sequence) Modeling
+- Causal Language (Sequence) Modeling
+- Classification (standalone or paired with sequence modeling)
+- Regression
+
+Notable features:
+- Use mixtures of any datasets, either from HuggingFace or stored locally, in streaming mode;
+- Use any patterns of local and global layers for most models
+- Create any types of hybrid architectures (coming soon)
+- Analyze rich model metrics during pre-training
+(e.g., distributions/ norms of activations, weight and gradients) and measure speed of pre-training and evals.
+- Use distributed mode or mixed-precision training seamlessly via DeepSpeed 
+
+The framework is currently under active development and will be used in future research.
+
 # MatMuls are Enough for Linear-Time Dense Attention
 
-This repository hosts the code of the official implementation and the experiments for
+This repository also hosts the code of the official implementation and the experiments for
 the paper "MatMuls are Enough for Efficient and Performant Linear-Time Attention".
-It also holds the code of the framework for training and evaluation of 
-efficient  linear-time architectures, which is under active development and will be used in future research.
+
 
 > ICML 2025 Workshops version of the paper: 
 > * LCFM (short format) https://openreview.net/forum?id=yLh58rr4JX
@@ -12,7 +55,7 @@ efficient  linear-time architectures, which is under active development and will
 > (Also available [locally](assets/Matmuls_are_Enough_ICML_Jun2025_%20CameraReady.pdf))
 > 
 > DANet-BERT models on HuggingFace: *to be added soon* 
-## About DenseAttention
+## About DenseAttention architecture
 
 In this research, we propose **DenseAttention** and **DenseAttention Network (DANet)** 
 as a replacement for softmax self-attention and Transformer block, respectively. 
