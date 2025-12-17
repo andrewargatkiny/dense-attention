@@ -16,14 +16,14 @@ architectures and their compositions:
 - DANet and DenseAttention (see below)
 - Transformer (softmax attention)
 - Numerous Linear Attention architectures which conform to framework described in 
-[Transformers are RNNs] (https://arxiv.org/abs/2006.16236)
+[Transformers are RNNs](https://arxiv.org/abs/2006.16236)
 - Various locality patterns: Local Attention (also known as Block-Sparse Attention), 
 Shifted-Local Attention, Sliding Window Attention (SWA), which are applicable not only 
 for softmax attention, but for other sequence mixers.
 - Architectures implemented in HuggingFace's Transformers library.
 
 Coming soon:
-- Support for architectures implemented in [FLA framework] (https://github.com/fla-org/flash-linear-attention)
+- Support for architectures implemented in [FLA framework](https://github.com/fla-org/flash-linear-attention)
 - S4 and other linear-time-invariant SSMs.
 
 Tasks supported by the framework:
