@@ -51,8 +51,7 @@ class ModelConfig(object):
                  local_scheme="l_sl_g",
                  hybrid=False,
                  transformer_heads=None,
-                 attn_proj_biases=False,
-                 **kwargs
+                 attn_proj_biases=False
                  ):
         """Constructs ModelConfig.
 
