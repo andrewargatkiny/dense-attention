@@ -153,7 +153,7 @@ class TransformerLayerConfig(object):
         self.attention_probs_dropout_prob = attention_probs_dropout_prob
         self.attn_proj_biases = attn_proj_biases
         self.max_position_embeddings = max_position_embeddings
-        self.pos_emb_type = pos_emb_type
+        self.pos_emb_type = PositionalEmbeddingsTypes[pos_emb_type.upper()]
         self.relpe_type = relpe_type
         self.local_scheme = local_scheme
         self.initializer_range = initializer_range

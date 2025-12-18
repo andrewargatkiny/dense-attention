@@ -300,27 +300,32 @@ class BertEncoder(nn.Module):
             modules = []
 
             if not config.layers_scheme and len(config.layers) != 1:
-                raise ValueError("Invalid layer configuration. Provide either a 'layers_scheme' with corresponding layer definitions, or a single layer definition in 'config.layers' without a 'layers_scheme'.")
-            if not config.layers_scheme:
-                config.layers_scheme = config.layers[0]["layer_name"]
+                raise ValueError("""Invalid layer configuration. 
+                Provide either a 'layers_scheme' with corresponding layer definitions, 
+                or a single layer definition in 'config.layers' without a 'layers_scheme'.""")
 
             name_to_config = {}
             for layer in config.layers:
                 if not layer.get("layer_name"):
-                    raise ValueError("Each layer in config.layers must have a 'layer_name' when 'layers_scheme' is used.")
+                    raise ValueError("Each layer in config.layers must have a 'layer_name'.")
                 if not layer.get("layer_type"):
                     raise ValueError(f"Layer '{layer['layer_name']}' must contain 'layer_type' attribute value")
                 layer_name = layer["layer_name"]
                 if layer_name in name_to_config:
                     raise ValueError(f"Duplicate layer_name detected in config.layers: '{layer_name}'")
                 name_to_config[layer_name] = layer
+            if not config.layers_scheme:
+                config.layers_scheme = config.layers[0]["layer_name"]
             ordered_names = config.layers_scheme.split("_")
             
             self.layers_configs = []
             for i in range(config.num_hidden_layers):
                 layer_name = ordered_names[i % len(ordered_names)]
                 if layer_name not in name_to_config:
-                    raise ValueError(f"Layer name '{layer_name}' from layers_scheme not found in the config entries describing available layer types.")
+                    raise ValueError(f""""
+                    Layer name '{layer_name}' from layers_scheme 
+                    not found in the config entries describing available layer types.
+                    """)
 
                 layer_config_dict = name_to_config[layer_name]
                 layer_type = layer_config_dict["layer_type"]
@@ -362,7 +367,7 @@ class BertEncoder(nn.Module):
                             num_heads=layer_config.num_attention_heads,
                             sep_head_dim=True
                         )
-                    rope_caches.append(rope_cache)
+                    rope_caches.append(rope_cache) # this approach works if only rope caches have no learnable parameters.
 
                 
             self.num_layers_configs = len(self.layers_configs)
@@ -410,27 +415,26 @@ class BertEncoder(nn.Module):
     def prepare_mask(self, hidden_states, attention_mask, layer_config):
         if attention_mask is None:
             attention_mask = torch.ones(hidden_states.size(0), hidden_states.size(1), 
-                                    dtype=torch.int32, device=hidden_states.device)
+                                    dtype=hidden_states.dtype, device=hidden_states.device)
         if layer_config["layer_type"] == "danet":
-            dtype = torch.int32
+            dtype = hidden_states.dtype
             
             extended_attention_mask = (
                 attention_mask /
                 attention_mask.sum(axis=-1, keepdim=True).pow(1. / 3)
             ).to(dtype).unsqueeze(-1)
-            if layer_config["local_scheme"] in ["l", "sl", "swa"]:
-                local_attention_mask = (
-                        attention_mask / layer_config["window_size"] ** (1. / 3)
-                ).to(dtype).unsqueeze(-1)
-                extended_attention_mask = (
-                    local_attention_mask,
-                    extended_attention_mask
-                )
+            local_attention_mask = (
+                    attention_mask / layer_config["window_size"] ** (1. / 3)
+            ).to(dtype).unsqueeze(-1)
+            extended_attention_mask = (
+                local_attention_mask,
+                extended_attention_mask
+            )
             return extended_attention_mask
         else:
             attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
             attention_mask = attention_mask.to(
-                dtype=torch.int32)  # fp16 compatibility
+                hidden_states.dtype)  # fp16 compatibility
             attention_mask = (1.0 - attention_mask) * -10000.0
             return attention_mask
 
@@ -449,7 +453,8 @@ class BertEncoder(nn.Module):
             hidden_states = layer_module(
                 hidden_states, 
                 attention_mask=masks[idx] if hasattr(self, "layers_configs") else attention_mask,
-                rope_cache= self.rope_caches[idx] if hasattr(self, "rope_caches") else self.rope_cache,  #this line works only if rope caches have no learnable parameters.
+                rope_cache= self.rope_caches[idx] if hasattr(self, "rope_caches") else self.rope_cache,  
+                # this line works only if rope caches have no learnable parameters.
                   **kwargs) 
             if output_all_encoded_layers:
                 all_encoder_layers.append(hidden_states)
@@ -458,7 +463,7 @@ class BertEncoder(nn.Module):
             all_encoder_layers.append(hidden_states)
 
         return all_encoder_layers
-    
+
 
 class BertPooler(nn.Module):
     def __init__(self, config):
