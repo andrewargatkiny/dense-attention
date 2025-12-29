@@ -51,7 +51,8 @@
             "shuffle": true,
             "seed": 1,
             "max_seq_length": 1024,
-            "total_samples": 131072
+            "total_samples": 131072,
+            "add_base_dir": false
         },
         "validation": {
             "sources": [
@@ -73,7 +74,8 @@
             ],
             "seed": 1,
             "max_seq_length": 1024,
-            "total_samples": 20000
+            "total_samples": 20000,
+            "add_base_dir": false
         },
         "test": {
             "input_file": "sentence_512/validation_data/c4-validation.00000-of-00008.json.gz",

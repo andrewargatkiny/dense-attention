@@ -34,7 +34,8 @@
             "total_samples": 131072,
             "max_seq_length": 4096,
             "tokenizer_name": "huggyllama/llama-7b",
-            "pad_samples": false
+            "pad_samples": false,
+            "add_base_dir": false
         },
         "validation": {
             "sources": [
@@ -49,7 +50,8 @@
             "total_samples": 81,
             "max_seq_length": 4096,
             "tokenizer_name": "huggyllama/llama-7b",
-            "pad_samples": false
+            "pad_samples": false,
+            "add_base_dir": false
         },
         "test": {
             "sources": [
@@ -64,7 +66,8 @@
             "total_samples": 16384,
             "max_seq_length": 4096,
             "tokenizer_name": "huggyllama/llama-7b",
-            "pad_samples": false
+            "pad_samples": false,
+            "add_base_dir": false
         }
     },
     "training": {
