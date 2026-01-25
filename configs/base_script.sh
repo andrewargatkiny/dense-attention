@@ -4,6 +4,12 @@ base_dir=`pwd`
 MASTER_PORT=${MASTER_PORT:-29500}
 TRACKING_SYSTEM=${TRACKING_SYSTEM:-clearml}
 
+# Support both BASE_DATA_DIR (old style) and DATA_PATH_PREFIX (new style)
+# If DATA_PATH_PREFIX is not set but BASE_DATA_DIR is, use it
+if [ -z "${DATA_PATH_PREFIX:-}" ] && [ -n "${BASE_DATA_DIR:-}" ]; then
+  export DATA_PATH_PREFIX="$BASE_DATA_DIR"
+fi
+
 for var in CONFIG DS_CONFIG BASE_JOB_NAME DATA_PATH_PREFIX PROJECT_NAME TASK_TYPE SEED; do
   value=${!var}
   if [ -z "$value" ]; then
