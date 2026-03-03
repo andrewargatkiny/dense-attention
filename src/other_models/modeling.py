@@ -318,7 +318,7 @@ class BertEncoder(nn.Module):
                 config.layers_scheme = config.layers[0]["layer_name"]
             ordered_names = config.layers_scheme.split("_")
             
-            self.layers_configs = []
+            self.unique_layer_cfs = []
             for i in range(config.num_hidden_layers):
                 layer_name = ordered_names[i % len(ordered_names)]
                 if layer_name not in name_to_config:
@@ -344,8 +344,9 @@ class BertEncoder(nn.Module):
                 layer_config = config_class(**final_layer_params)
                 module = layer_class(layer_config)
                 modules.append(module)
+                # RelPE instantiation for different types of layers.
                 if i < len(ordered_names):
-                    self.layers_configs.append(final_layer_params)
+                    self.unique_layer_cfs.append(final_layer_params)
                     if (layer_config.pos_emb_type == PositionalEmbeddingsTypes.RELPE and
                             layer_config.relpe_type is not None):
                         relpe_type = RelPEType[layer_config.relpe_type.upper()]
@@ -370,13 +371,17 @@ class BertEncoder(nn.Module):
                     rope_caches.append(rope_cache) # this approach works if only rope caches have no learnable parameters.
 
                 
-            self.num_layers_configs = len(self.layers_configs)
+            self.num_layer_configs = len(self.unique_layer_cfs)
             self.rope_caches = nn.ModuleList(rope_caches)
             self.layer = nn.ModuleList(modules)
 
         #legacy logic for backward compatibility, it will be used if the `layers` parameter is not specified.
         else:
-            self. relpe_type = RelPEType.DUMMY
+            if (config.pos_emb_type == PositionalEmbeddingsTypes.RELPE and
+                    config.relpe_type is not None):
+                self.relpe_type = RelPEType[config.relpe_type.upper()]
+            else:
+               self. relpe_type = RelPEType.DUMMY
             self.rope_cache = RelPETypeToClass[self.relpe_type](
                 seq_len=config.max_position_embeddings,
                 n_elem=config.hidden_size // config.num_attention_heads,
@@ -414,8 +419,10 @@ class BertEncoder(nn.Module):
 
     def prepare_mask(self, hidden_states, attention_mask, layer_config):
         if attention_mask is None:
-            attention_mask = torch.ones(hidden_states.size(0), hidden_states.size(1), 
-                                    dtype=hidden_states.dtype, device=hidden_states.device)
+            attention_mask = torch.ones(
+                hidden_states.size(0), hidden_states.size(1),
+                dtype=hidden_states.dtype, device=hidden_states.device
+            )
         if layer_config["layer_type"] == "danet":
             dtype = hidden_states.dtype
             
@@ -443,21 +450,31 @@ class BertEncoder(nn.Module):
                 attention_mask,
                 output_all_encoded_layers=True,
                 **kwargs):
-        if hasattr(self, "layers_configs"):
-            masks = []
-            for i in range(self.num_layers_configs):
-                masks.append(self.prepare_mask(hidden_states, attention_mask, self.layers_configs[i]))
         all_encoder_layers = []
-        for i, layer_module in enumerate(self.layer):
-            idx = i % self.num_layers_configs
-            hidden_states = layer_module(
-                hidden_states, 
-                attention_mask=masks[idx] if hasattr(self, "layers_configs") else attention_mask,
-                rope_cache= self.rope_caches[idx] if hasattr(self, "rope_caches") else self.rope_cache,  
-                # this line works only if rope caches have no learnable parameters.
-                  **kwargs) 
-            if output_all_encoded_layers:
-                all_encoder_layers.append(hidden_states)
+        if hasattr(self, "unique_layer_cfs"):
+            masks = []
+            for i in range(self.num_layer_configs):
+                masks.append(self.prepare_mask(hidden_states, attention_mask,
+                                               self.unique_layer_cfs[i]))
+            for i, layer_module in enumerate(self.layer):
+                idx = i % self.num_layer_configs
+                hidden_states = layer_module(
+                    hidden_states,
+                    attention_mask=masks[idx],
+                    rope_cache=self.rope_caches[idx],
+                    # this line works only if rope caches have no learnable parameters.
+                    **kwargs)
+                if output_all_encoded_layers:
+                    all_encoder_layers.append(hidden_states)
+        else:
+            for i, layer_module in enumerate(self.layer):
+                hidden_states = layer_module(
+                    hidden_states,
+                    attention_mask=attention_mask,
+                    rope_cache=self.rope_cache,
+                    **kwargs)
+                if output_all_encoded_layers:
+                    all_encoder_layers.append(hidden_states)
         if not output_all_encoded_layers:
             hidden_states = self.FinalLayerNorm(hidden_states)
             all_encoder_layers.append(hidden_states)
