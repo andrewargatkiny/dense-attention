@@ -9,7 +9,7 @@ from src.other_models import modeling_legacy
 
 
 BASE_CONFIG = {
-    "vocab_size": 128,
+    "vocab_size_or_config_json_file": 128,
     "hidden_size": 32,
     "num_hidden_layers": 6,
     "num_attention_heads": 4,
@@ -48,7 +48,10 @@ CASES = [
         "override": {"pos_emb_type": "relpe", "relpe_type": "rope", "attention_kernel": "softmax"},
     },
     {"id": "legacy_local_fallback", "override": {"local_attention": True, "local_scheme": None}},
-    {"id": "explicit_local_scheme", "override": {"local_attention": False, "local_scheme": "g_l_sl_swa"}},
+    {
+        "id": "explicit_local_scheme",
+        "override": {"local_attention": False, "local_scheme": "g_l_sl_swa", "window_size": 32},
+    },
 ]
 
 
@@ -65,19 +68,13 @@ def _build_case_config(case):
     cfg.update(case["override"])
     return cfg
 
-#TODO: Do we really need this function? In all cases above pos_emb_type is string.
-def _normalize_pos_emb_type(pos_emb_type):
-    if isinstance(pos_emb_type, str):
-        return pos_emb_type
-    return pos_emb_type.name.lower()
-
 
 def _build_layers_equivalent_config(old_cfg):
     cfg = copy.deepcopy(old_cfg)
     cfg["local_attention"] = False
     cfg["local_scheme"] = None
 
-    pos_emb_type = _normalize_pos_emb_type(old_cfg["pos_emb_type"])
+    pos_emb_type = old_cfg["pos_emb_type"]
     relpe_type = old_cfg.get("relpe_type")
 
     def make_layer(name, code):
@@ -97,32 +94,26 @@ def _build_layers_equivalent_config(old_cfg):
         for code in codes:
             if code not in unique_codes:
                 unique_codes.append(code)
-        code_to_name = {code: f"layer_{code}" for code in unique_codes}
+        code_to_name = {code: f"layer{code}" for code in unique_codes}
         cfg["layers"] = [make_layer(code_to_name[code], code) for code in unique_codes]
         cfg["layers_scheme"] = "_".join(code_to_name[code] for code in codes)
     elif old_cfg.get("local_attention"):
         cfg["layers"] = [
-            make_layer("layer_l", "l"),
-            make_layer("layer_sl", "sl"),
-            make_layer("layer_g", "g"),
+            make_layer("layerl", "l"),
+            make_layer("layersl", "sl"),
+            make_layer("layerg", "g"),
         ]
-        cfg["layers_scheme"] = "layer_l_layer_sl_layer_g"
+        cfg["layers_scheme"] = "layerl_layersl_layerg"
     else:
-        cfg["layers"] = [make_layer("layer_g", "g")]
-        cfg["layers_scheme"] = "layer_g"
+        cfg["layers"] = [make_layer("layerg", "g")]
+        cfg["layers_scheme"] = "layerg"
 
     return cfg
 
 
 def _instantiate_pretraining(module, cfg, args):
-    #TODO: few next lines could've been avoided if the config had "vocab_size_or_config_json_file"
-    # as in real configs in `configs` dir instead of `vocab_size` parameter you used.
     kwargs = copy.deepcopy(cfg)
-    vocab_size = kwargs.pop("vocab_size")
-    config = module.TransformerConfig(
-        vocab_size_or_config_json_file=vocab_size,
-        **kwargs,
-    )
+    config = module.TransformerConfig(**kwargs)
     return module.TransformerForPreTraining(config, args)
 
 
@@ -131,28 +122,38 @@ def _assert_state_dict_compatible(model, state_dict):
     state_keys = set(state_dict.keys())
     missing = sorted(model_keys - state_keys)
     unexpected = sorted(state_keys - model_keys)
-    # TODO: change the message to reflect that if we have more than 10 missing/ unexpected values, it can mislead in such cases.
+    missing_suffix = " (truncated to first 10)" if len(missing) > 10 else ""
+    unexpected_suffix = " (truncated to first 10)" if len(unexpected) > 10 else ""
     assert not missing and not unexpected, (
-        f"State dict mismatch: missing={missing[:10]}, unexpected={unexpected[:10]}"
+        f"State dict mismatch: "
+        f"missing_count={len(missing)}{missing_suffix}, first_10_missing={missing[:10]}; "
+        f"unexpected_count={len(unexpected)}{unexpected_suffix}, first_10_unexpected={unexpected[:10]}"
     )
     model.load_state_dict(state_dict, strict=True)
 
 
-def _fixed_batch(vocab_size, seq_len=16, batch_size=2):
-    # TODO: batch size needs to fixed, because `attention_mask` is hardcoded to have 2 rows.
+def _fixed_batch(config, seq_len=16, batch_size=2):
+    vocab_size = config["vocab_size_or_config_json_file"]
     input_ids = torch.arange(batch_size * seq_len, dtype=torch.long).view(batch_size, seq_len) % vocab_size
-    attention_mask = torch.tensor(
-        [[1] * seq_len, [1] * (seq_len - 4) + [0] * 4], dtype=torch.long
-    )
-    token_type_ids = torch.tensor(
-        [[0] * (seq_len // 2) + [1] * (seq_len // 2), [1, 0] * (seq_len // 2)],
-        dtype=torch.long,
+    attention_mask = torch.ones((batch_size, seq_len), dtype=torch.long)
+    if seq_len > 1:
+        for i in range(batch_size):
+            num_pad = min(i, seq_len - 1)
+            if num_pad > 0:
+                attention_mask[i, -num_pad:] = 0
+    base_token_type = torch.arange(seq_len, dtype=torch.long) % 2
+    token_type_ids = torch.stack(
+        [base_token_type.roll(shifts=i) for i in range(batch_size)],
+        dim=0,
     )
     masked_lm_labels = torch.full((batch_size, seq_len), -1, dtype=torch.long)
-    masked_lm_labels[0, 1] = 7
-    masked_lm_labels[0, 5] = 11
-    masked_lm_labels[1, 3] = 13
-    label = torch.tensor([0, 1], dtype=torch.long)
+    positions = [1, (seq_len // 3) % seq_len, ((2 * seq_len) // 3) % seq_len]
+    for i in range(batch_size):
+        pos1 = positions[i % len(positions)]
+        pos2 = positions[(i + 1) % len(positions)]
+        masked_lm_labels[i, pos1] = (7 + 3 * i) % vocab_size
+        masked_lm_labels[i, pos2] = (11 + 5 * i) % vocab_size
+    label = torch.arange(batch_size, dtype=torch.long) % 2
     return {
         "input_ids": input_ids,
         "attention_mask": attention_mask,
@@ -195,7 +196,7 @@ def test_old_style_legacy_vs_new_logits_exact(case, monkeypatch):
     _patch_dist_get_rank(monkeypatch)
     args = _make_args()
     cfg = _build_case_config(case)
-    batch = _fixed_batch(cfg["vocab_size"])
+    batch = _fixed_batch(cfg)
 
     torch.manual_seed(2026)
     legacy_ref = _instantiate_pretraining(modeling_legacy, cfg, args)
@@ -217,7 +218,7 @@ def test_old_style_legacy_vs_new_loss_exact(case, monkeypatch):
     _patch_dist_get_rank(monkeypatch)
     args = _make_args()
     cfg = _build_case_config(case)
-    batch = _fixed_batch(cfg["vocab_size"])
+    batch = _fixed_batch(cfg)
 
     torch.manual_seed(2026)
     legacy_ref = _instantiate_pretraining(modeling_legacy, cfg, args)
@@ -239,7 +240,7 @@ def test_old_style_vs_layers_logits_exact(case, monkeypatch):
     args = _make_args()
     old_cfg = _build_case_config(case)
     layers_cfg = _build_layers_equivalent_config(old_cfg)
-    batch = _fixed_batch(old_cfg["vocab_size"])
+    batch = _fixed_batch(old_cfg)
 
     torch.manual_seed(2026)
     old_ref = _instantiate_pretraining(modeling_new, old_cfg, args)
@@ -262,7 +263,7 @@ def test_old_style_vs_layers_loss_exact(case, monkeypatch):
     args = _make_args()
     old_cfg = _build_case_config(case)
     layers_cfg = _build_layers_equivalent_config(old_cfg)
-    batch = _fixed_batch(old_cfg["vocab_size"])
+    batch = _fixed_batch(old_cfg)
 
     torch.manual_seed(2026)
     old_ref = _instantiate_pretraining(modeling_new, old_cfg, args)
@@ -276,4 +277,3 @@ def test_old_style_vs_layers_loss_exact(case, monkeypatch):
     old_loss = _forward_loss(old_model, batch)
     layers_loss = _forward_loss(layers_model, batch)
     _assert_exact_tensor_eq(old_loss, layers_loss, f"{case['id']} old-vs-layers loss mismatch")
-
