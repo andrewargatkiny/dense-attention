@@ -192,7 +192,7 @@ def _assert_exact_tensor_eq(a, b, msg):
 
 
 @pytest.mark.parametrize("case", CASES, ids=[case["id"] for case in CASES])
-def test_old_style_legacy_vs_new_logits_exact(case, monkeypatch):
+def test_transformers_old_cfg_in_legacy_vs_new_modeling_outputs(case, monkeypatch):
     _patch_dist_get_rank(monkeypatch)
     args = _make_args()
     cfg = _build_case_config(case)
@@ -212,30 +212,13 @@ def test_old_style_legacy_vs_new_logits_exact(case, monkeypatch):
     _assert_exact_tensor_eq(legacy_logits[0], new_logits[0], f"{case['id']} MLM logits mismatch")
     _assert_exact_tensor_eq(legacy_logits[1], new_logits[1], f"{case['id']} CLS logits mismatch")
 
-
-@pytest.mark.parametrize("case", CASES, ids=[case["id"] for case in CASES])
-def test_old_style_legacy_vs_new_loss_exact(case, monkeypatch):
-    _patch_dist_get_rank(monkeypatch)
-    args = _make_args()
-    cfg = _build_case_config(case)
-    batch = _fixed_batch(cfg)
-
-    torch.manual_seed(2026)
-    legacy_ref = _instantiate_pretraining(modeling_legacy, cfg, args)
-    state_dict = {k: v.detach().clone() for k, v in legacy_ref.state_dict().items()}
-
-    legacy_model = _instantiate_pretraining(modeling_legacy, cfg, args)
-    new_model = _instantiate_pretraining(modeling_new, cfg, args)
-    _assert_state_dict_compatible(legacy_model, state_dict)
-    _assert_state_dict_compatible(new_model, state_dict)
-
     legacy_loss = _forward_loss(legacy_model, batch)
     new_loss = _forward_loss(new_model, batch)
     _assert_exact_tensor_eq(legacy_loss, new_loss, f"{case['id']} loss mismatch")
 
 
 @pytest.mark.parametrize("case", CASES, ids=[case["id"] for case in CASES])
-def test_old_style_vs_layers_logits_exact(case, monkeypatch):
+def test_transformers_old_vs_new_cfg_in_new_modeling_outputs(case, monkeypatch):
     _patch_dist_get_rank(monkeypatch)
     args = _make_args()
     old_cfg = _build_case_config(case)
@@ -255,24 +238,6 @@ def test_old_style_vs_layers_logits_exact(case, monkeypatch):
     layers_logits = _forward_logits(layers_model, batch)
     _assert_exact_tensor_eq(old_logits[0], layers_logits[0], f"{case['id']} old-vs-layers MLM logits mismatch")
     _assert_exact_tensor_eq(old_logits[1], layers_logits[1], f"{case['id']} old-vs-layers CLS logits mismatch")
-
-
-@pytest.mark.parametrize("case", CASES, ids=[case["id"] for case in CASES])
-def test_old_style_vs_layers_loss_exact(case, monkeypatch):
-    _patch_dist_get_rank(monkeypatch)
-    args = _make_args()
-    old_cfg = _build_case_config(case)
-    layers_cfg = _build_layers_equivalent_config(old_cfg)
-    batch = _fixed_batch(old_cfg)
-
-    torch.manual_seed(2026)
-    old_ref = _instantiate_pretraining(modeling_new, old_cfg, args)
-    state_dict = {k: v.detach().clone() for k, v in old_ref.state_dict().items()}
-
-    old_model = _instantiate_pretraining(modeling_new, old_cfg, args)
-    layers_model = _instantiate_pretraining(modeling_new, layers_cfg, args)
-    _assert_state_dict_compatible(old_model, state_dict)
-    _assert_state_dict_compatible(layers_model, state_dict)
 
     old_loss = _forward_loss(old_model, batch)
     layers_loss = _forward_loss(layers_model, batch)
