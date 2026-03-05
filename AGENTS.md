@@ -94,3 +94,12 @@ If editing attention/model paths, verify all of the following:
 - BERT pretraining example: `configs/bert_relpe/ds_train_dense_attn_bert_seq128_bf16.sh`
 - GPT pretraining example: `configs/gpt/ds_train_dense_attn_gpt_360m_bf16.sh`
 - LRA example: `SEED=100 configs/lra/ds_train_dense_attn_pathfinder32.sh`
+
+## 10) Python style preference
+- Prefer PEP-8-style line length of 80 characters.
+- Rarely allow a small overflow (about 1-3 characters), but generally wrap to the next line.
+
+## 11) Test environment preference
+- Run tests with project-root `venv` first (`venv/bin/python -m pytest ...`).
+- If `venv` is missing/broken/incompatible (e.g., cannot import `pytest` or `torch`), use a suitable preinstalled conda env instead.
+- Choose the first conda env that can run pytest and import required test packages.
