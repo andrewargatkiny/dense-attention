@@ -387,9 +387,8 @@ class BertEncoder(nn.Module):
                 n_elem=config.hidden_size // config.num_attention_heads,
                 sep_head_dim=True
             )
-            layer = BertLayer(config)
             self.layer = nn.ModuleList(
-                [copy.deepcopy(layer) for _ in range(config.num_hidden_layers)])
+                [BertLayer(config) for _ in range(config.num_hidden_layers)])
             # logic for local attention scheme
             if hasattr(config, 'local_scheme') and config.local_scheme:
                 scheme = config.local_scheme.split('_')
@@ -408,6 +407,7 @@ class BertEncoder(nn.Module):
                         layer_config = copy.deepcopy(config)
                         layer_config.attention_kernel = "swa"
                         layer_module.attention.self = BertSelfAttention(layer_config)
+                    layer_module._init_weights(config)
                     # 'g' is the default and requires no change, so we just pass.
             # fallback to old logic for backward compatibility
             elif config.local_attention:
@@ -416,6 +416,7 @@ class BertEncoder(nn.Module):
                         layer.attention.self = BertSelfLocalAttention(config)
                     elif i % 3 == 1:
                         layer.attention.self = BertSelfShiftedLocalAttention(config)
+                    layer._init_weights(config)
 
     def prepare_mask(self, hidden_states, attention_mask, layer_config):
         if attention_mask is None:
@@ -593,10 +594,9 @@ class PreTrainedBertModel(nn.Module):
             num_layers = self.config.num_hidden_layers
             std = self.config.initializer_range
             if hasattr(module, 'bert_output_layer'):
-                if torch.distributed.get_rank() == 0:
-                    print("Accounting for accumulation on the residual path")
-                    std = self.config.initializer_range / math.sqrt(
-                        2.0 * num_layers)
+                print("Accounting for accumulation on the residual path")
+                std = self.config.initializer_range / math.sqrt(
+                    2.0 * num_layers)
             module.weight.data.normal_(mean=0.0, std=std)
         elif isinstance(module, BertLayerNorm):
             module.bias.data.zero_()

@@ -816,6 +816,9 @@ class PreTrainedBertModel(nn.Module):
             num_layers = self.config.num_hidden_layers
             std = self.config.initializer_range
             if hasattr(module, 'bert_output_layer'):
+                # Despite a seeming error, there wasn't weights mismatch among
+                # ranks, because this code was always used with DeepSpeed where
+                # it always broadcasted the weights from rank 0.
                 if torch.distributed.get_rank() == 0:
                     print("Accounting for accumulation on the residual path")
                     std = self.config.initializer_range / math.sqrt(
