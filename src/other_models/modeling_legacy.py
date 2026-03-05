@@ -28,7 +28,6 @@ import logging
 import tarfile
 import tempfile
 import shutil
-import inspect
 
 import torch
 import torch.nn.functional as F
@@ -39,8 +38,6 @@ from src.positional_embeddings import PositionalEmbeddingsTypes, SinusoidalPosit
     RelPEType
 from .attention_kernels import SoftmaxAttention, LinearAttention, SlidingWindowAttention, PowerAttention
 from ..activations import Activation2Class
-from .transformers import ACT2FN, BertLayer, BertSelfAttention, BertSelfLocalAttention, BertSelfShiftedLocalAttention, BertLayerNorm
-from .layers_registry import LayerTypeToClass, LayerConfigToClass
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +59,24 @@ PRETRAINED_MODEL_ARCHIVE_MAP = {
 }
 CONFIG_NAME = 'bert_config.json'
 WEIGHTS_NAME = 'pytorch_model.bin'
+
+
+def gelu(x):
+    """Implementation of the gelu activation function.
+        For information: OpenAI GPT's gelu is slightly different (and gives slightly different results):
+        0.5 * x * (1 + torch.tanh(math.sqrt(2 / math.pi) * (x + 0.044715 * torch.pow(x, 3))))
+    """
+    pdtype = x.dtype
+    x = x.float()
+    y = x * 0.5 * (1.0 + torch.erf(x / math.sqrt(2.0)))
+    return y.to(pdtype)
+
+
+def swish(x):
+    return x * torch.sigmoid(x)
+
+
+ACT2FN = {"gelu": gelu, "relu": torch.nn.functional.relu, "swish": swish}
 
 
 class TransformerConfig(object):
@@ -91,13 +106,11 @@ class TransformerConfig(object):
                  post_attn_ln_type="default",
                  causal=False,
                  local_attention=False,
-                 local_scheme = None,
                  window_size=1024,
                  apply_relpe_after=False,
-                 layers_scheme=None,
+                 local_scheme=None,
                  power=2,
                  scaling_d_factor=False,
-                 layers=None,
                  **kwargs):
         """Constructs ModelConfig.
 
@@ -146,17 +159,10 @@ class TransformerConfig(object):
             apply_relpe_after: For linear attentions, determines whether Relative
                 Positional Encoding (RELPE) is applied after the feature map (if true)
                 or before the linear attention kernel (if false).
-            layers_scheme: Defines the sequence and repetition of layers within the encoder.
-                This should be a string of layer names separated by underscores
-                (e.g., 'layer1_layer2_layer1_layer3'). Each name must correspond to a unique `layer_name`
-                key in one of the configuration dictionaries provided in the  `layers` parameter.
             power: For Power Attention, determines the power (p).
             scaling_d_factor: For Power Attention, determines whether to scale q,k by a
                 predetermined scaling factor depending on d for additional numerical
                 stability.
-            layers: A list of dictionaries, where each dictionary provides the configuration
-                for a specific layer type. Each dictionary must contain a unique `layer_name`
-                key, which is then used by the `layers_scheme` parameter to construct the full encoder stack.
         """
         if isinstance(vocab_size_or_config_json_file, str):
             with open(vocab_size_or_config_json_file, "r",
@@ -191,10 +197,8 @@ class TransformerConfig(object):
             self.window_size = window_size
             self.apply_relpe_after = apply_relpe_after
             self.local_scheme = local_scheme
-            self.layers_scheme = layers_scheme
             self.power = power
             self.scaling_d_factor = scaling_d_factor
-            self.layers = layers
         else:
             raise ValueError(
                 "First argument must be either a vocabulary size (int)"
@@ -228,6 +232,28 @@ class TransformerConfig(object):
     def to_json_string(self):
         """Serializes this instance to a JSON string."""
         return json.dumps(self.to_dict(), indent=2, sort_keys=True) + "\n"
+
+
+#try:
+#    from apex.normalization.fused_layer_norm import FusedLayerNorm as BertLayerNorm
+#except ImportError:
+#print("Better speed can be achieved with apex installed from https://www.github.com/nvidia/apex.")
+class BertLayerNorm(nn.Module):
+    def __init__(self, hidden_size, eps=1e-12):
+        """Construct a layernorm module in the TF style (epsilon inside the square root).
+        """
+        super(BertLayerNorm, self).__init__()
+        self.weight = nn.Parameter(torch.ones(hidden_size))
+        self.bias = nn.Parameter(torch.zeros(hidden_size))
+        self.variance_epsilon = eps
+
+    def forward(self, x):
+        pdtype = x.dtype
+        x = x.float()
+        u = x.mean(-1, keepdim=True)
+        s = (x - u).pow(2).mean(-1, keepdim=True)
+        x = (x - u) / torch.sqrt(s + self.variance_epsilon)
+        return self.weight * x.to(pdtype) + self.bias
 
 
 class BertEmbeddings(nn.Module):
@@ -284,6 +310,333 @@ class BertEmbeddings(nn.Module):
         return embeddings
 
 
+class BertSelfAttention(nn.Module):
+    def __init__(self, config):
+        super(BertSelfAttention, self).__init__()
+        if config.hidden_size % config.num_attention_heads != 0:
+            raise ValueError(
+                "The hidden size (%d) is not a multiple of the number of attention "
+                "heads (%d)" %
+                (config.hidden_size, config.num_attention_heads))
+        if config.attention_kernel not in ["softmax", "linear", "swa", "power"]:
+            raise ValueError("Attention kernel param should hold value of "
+                             "either 'softmax' or 'linear' or 'swa' or 'power'.")
+        if config.attention_kernel == "softmax":
+            self.attention_kernel = SoftmaxAttention(config)
+        elif config.attention_kernel == "swa":
+            self.attention_kernel = SlidingWindowAttention(config)
+        elif config.attention_kernel == "linear":
+            self.attention_kernel = LinearAttention(config)
+        elif config.attention_kernel == "power":
+            self.attention_kernel = PowerAttention(config)
+        else:
+            raise NotImplementedError(
+                f"Attention kernel for {config.attention_kernel} is not "
+                f"implemented"
+            )
+        self.causal = config.causal
+        self.num_attention_heads = config.num_attention_heads
+        self.attention_head_size = int(config.hidden_size /
+                                       config.num_attention_heads)
+        self.all_head_size = self.num_attention_heads * self.attention_head_size
+
+        self.query = nn.Linear(config.hidden_size, self.all_head_size,
+                               bias=config.attn_proj_biases)
+        self.key = nn.Linear(config.hidden_size, self.all_head_size,
+                             bias=config.attn_proj_biases)
+        self.value = nn.Linear(config.hidden_size, self.all_head_size,
+                               bias=config.attn_proj_biases)
+
+        self.dropout = nn.Dropout(config.attention_probs_dropout_prob)
+        self.dropout_prob = config.attention_probs_dropout_prob
+        self.apply_relpe_after = config.apply_relpe_after
+    def transpose_for_scores(self, x):
+        new_x_shape = x.size()[:-1] + (self.num_attention_heads,
+                                       self.attention_head_size)
+        x = x.view(*new_x_shape)
+        return x.permute(0, 2, 1, 3)
+
+    def forward(self, hidden_states, attention_mask, rope_cache):
+        # hidden_states = rope_cache.apply_relpe(hidden_states)
+        mixed_query_layer = self.query(hidden_states)
+        mixed_key_layer = self.key(hidden_states)
+        mixed_value_layer = self.value(hidden_states)
+
+        query_layer = self.transpose_for_scores(mixed_query_layer)
+        key_layer = self.transpose_for_scores(mixed_key_layer)
+        if not self.apply_relpe_after:
+          query_layer = rope_cache.apply_relpe(query_layer)
+          key_layer = rope_cache.apply_relpe(key_layer)
+        value_layer = self.transpose_for_scores(mixed_value_layer)
+        #if torch.all(attention_mask == 0):
+        attention_mask = None
+        #kv = torch.matmul(key_layer.transpose(-1, -2), value_layer)
+        #context_layer = torch.matmul(query_layer, kv)
+        #attention_mask = None
+        context_layer = self.attention_kernel(
+            query_layer, key_layer, value_layer, attn_mask=attention_mask,
+            dropout_p=self.dropout_prob, causal=self.causal, rope_cache=rope_cache
+        )
+        """
+        context_layer = nn.functional.scaled_dot_product_attention(
+            query_layer, key_layer, value_layer, attn_mask=attention_mask,
+            dropout_p=self.dropout_prob
+        )
+
+        # Take the dot product between "query" and "key" to get the raw attention scores.
+        attention_scores = torch.matmul(query_layer,
+                                        key_layer.transpose(-1, -2))
+        attention_scores = attention_scores / math.sqrt(
+            self.attention_head_size)
+        # Apply the attention mask is (precomputed for all layers in BertModel forward() function)
+        attention_scores = attention_scores + attention_mask
+
+        pdtype = attention_scores.dtype
+        # Normalize the attention scores to probabilities.
+        attention_probs = nn.Softmax(dim=-1)(
+            attention_scores.float()).to(pdtype)
+
+        # This is actually dropping out entire tokens to attend to, which might
+        # seem a bit unusual, but is taken from the original Transformer paper.
+        attention_probs = self.dropout(attention_probs)
+
+        context_layer = torch.matmul(attention_probs, value_layer)
+        """
+        context_layer = context_layer.permute(0, 2, 1, 3).contiguous()
+        new_context_layer_shape = context_layer.size()[:-2] + (
+            self.all_head_size, )
+        context_layer = context_layer.view(*new_context_layer_shape)
+        return context_layer
+
+class BertSelfLocalAttention(BertSelfAttention):
+    def __init__(self, config):
+        super(BertSelfLocalAttention, self).__init__(config)
+        self.window_size = config.window_size
+        assert config.max_position_embeddings % self.window_size == 0
+
+    def transpose_for_local_scores(self, x, num_windows):
+        new_x_shape = (x.size()[0], num_windows, self.window_size,
+                       self.num_attention_heads, self.attention_head_size)
+        x = x.view(*new_x_shape)
+        # Batch, Seq, SubSeqLen, Head, HeadDim
+        return x.permute(0, 1, 3, 2, 4)
+        # queries: Batch, Seq, Head, SubSeqLen, HeadDim
+
+    def forward(self, hidden_states, attention_mask, rope_cache):
+        # hidden_states: Batch, SeqLen, EmbedDim
+        seq_len = hidden_states.shape[1]
+        if seq_len < self.window_size:
+            return super().forward(hidden_states, attention_mask, rope_cache)
+        num_windows = seq_len // self.window_size
+        last_window =  seq_len - self.window_size * num_windows
+        # Handle the case when the seq len is not divisible by window size
+        if last_window > 0:
+            main_seq_len = seq_len - last_window
+            main_part = self._mh_local(
+                hidden_states[:, :main_seq_len, :],
+                num_windows, attention_mask, rope_cache
+            )
+            last_part = super().forward(
+                hidden_states[:, :last_window, :], attention_mask, rope_cache
+            )
+            return torch.cat([main_part, last_part], dim=1)
+
+        return self._mh_local(hidden_states, num_windows, attention_mask, rope_cache)
+
+    # TODO: no masking support yet
+    def _mh_local(self, hidden_states, num_windows, attention_mask, rope_cache):
+        size = hidden_states.size()
+        mixed_query_layer = self.query(hidden_states)
+        mixed_key_layer = self.key(hidden_states)
+        mixed_value_layer = self.value(hidden_states)
+
+        query_layer = self.transpose_for_local_scores(mixed_query_layer, num_windows)
+        key_layer = self.transpose_for_local_scores(mixed_key_layer, num_windows)
+        value_layer = self.transpose_for_local_scores(mixed_value_layer, num_windows)
+
+        if not self.apply_relpe_after:
+            query_layer = rope_cache.apply_local_relpe2(
+                query_layer, self.window_size, num_windows)
+            key_layer = rope_cache.apply_local_relpe2(
+                key_layer, self.window_size, num_windows)
+        # Batch, Seq, Head, SubSeqLen, HeadDim
+        #if torch.all(attention_mask == 0):
+        attention_mask = None
+        #kv = torch.matmul(key_layer.transpose(-1, -2), value_layer)
+        #context_layer = torch.matmul(query_layer, kv)
+        context_layer = self.attention_kernel(
+            query_layer, key_layer, value_layer, attn_mask=attention_mask,
+            dropout_p=self.dropout_prob, causal=self.causal, rope_cache=rope_cache
+        )
+        """
+        context_layer = nn.functional.scaled_dot_product_attention(
+            query_layer, key_layer, value_layer, attn_mask=attention_mask,
+            dropout_p=self.dropout_prob
+        )
+        """
+        context_layer = context_layer.permute(0, 1, 3, 2, 4)
+        # output: Batch, Seq, SeqLen, Head, HeadDim
+        context_layer = context_layer.reshape(*size)
+        # output: Batch, SeqLen, EmbedDim
+        return context_layer
+
+class BertSelfShiftedLocalAttention(BertSelfLocalAttention):
+    def __init__(self, config: TransformerConfig, layer_number=1):
+        super(BertSelfShiftedLocalAttention,
+              self).__init__(config)
+        # self.window_size = config.window_size
+        assert self.window_size % 2 == 0 and self.window_size > 0
+        if config.max_position_embeddings < self.window_size:
+            raise ValueError(
+                f"max_position_embeddings ({config.max_position_embeddings}) "
+                f"should be at least equal to window_size ({self.window_size})."
+            )
+        else:
+            self.left_pad = self.window_size // 2
+            self.right_pad = self.window_size // 2
+
+    def forward(self, hidden_states, attention_mask, rope_cache):
+        # hidden_states: Batch, SeqLen, EmbedDim
+        seq_len = hidden_states.shape[1]
+        if seq_len <= self.window_size // 2:
+            return super().forward(hidden_states, attention_mask, rope_cache)
+        hidden_states = nn.functional.pad(
+            hidden_states, pad=(0, 0, self.left_pad, self.right_pad))
+        hidden_states = super().forward(hidden_states, attention_mask, rope_cache)
+        return hidden_states[:, self.left_pad:-self.right_pad, :]
+
+class BertSelfOutput(nn.Module):
+    def __init__(self, config):
+        super(BertSelfOutput, self).__init__()
+        self.dense = nn.Linear(config.hidden_size, config.hidden_size,
+                               bias=config.attn_proj_biases)
+        self.dense.bert_output_layer = True
+        self.dropout = nn.Dropout(config.hidden_dropout_prob)
+
+    def forward(self, hidden_states, input_tensor):
+        hidden_states = self.dense(hidden_states)
+        hidden_states = self.dropout(hidden_states)
+        return hidden_states
+
+
+class BertAttention(nn.Module):
+    def __init__(self, config):
+        super(BertAttention, self).__init__()
+        self.self = BertSelfAttention(config)
+        self.output = BertSelfOutput(config)
+
+    def forward(self, input_tensor, attention_mask, rope_cache):
+        self_output = self.self(input_tensor, attention_mask, rope_cache)
+        attention_output = self.output(self_output, input_tensor)
+        return attention_output
+
+class BertLocalAttention(BertAttention):
+    def __init__(self, config):
+        super(BertLocalAttention, self).__init__(config)
+        self.self = BertSelfLocalAttention(config)
+
+class BertShiftedLocalAttention(BertAttention):
+    def __init__(self, config):
+        super(BertShiftedLocalAttention, self).__init__(config)
+        self.self = BertSelfShiftedLocalAttention(config)
+
+class BertIntermediate(nn.Module):
+    def __init__(self, config):
+        super(BertIntermediate, self).__init__()
+        self.dense = nn.Linear(config.hidden_size, config.intermediate_size)
+        self.intermediate_act_fn = (ACT2FN[config.hidden_act]
+            if (isinstance(config.hidden_act, str)
+                and not config.hidden_act == "swiglu")
+            else config.hidden_act)
+
+    def forward(self, hidden_states):
+        hidden_states = self.dense(hidden_states)
+        hidden_states = self.intermediate_act_fn(hidden_states)
+        return hidden_states
+
+
+class BertOutput(nn.Module):
+    def __init__(self, config):
+        super(BertOutput, self).__init__()
+        self.dense = nn.Linear(config.intermediate_size, config.hidden_size)
+        self.dense.bert_output_layer = True
+        self.dropout = nn.Dropout(config.hidden_dropout_prob)
+
+    def forward(self, hidden_states):
+        hidden_states = self.dense(hidden_states)
+        hidden_states = self.dropout(hidden_states)
+        return hidden_states
+
+def find_multiple(n: int, k: int) -> int:
+    if n % k == 0:
+        return n
+    return n + k - (n % k)
+
+class BertSwigluUp(nn.Module):
+    def __init__(self, config):
+        super(BertSwigluUp, self).__init__()
+        hidden_size = config.hidden_size
+        n_hidden = int(2 * config.intermediate_size / 3)
+        n_hidden = find_multiple(n_hidden, 128)
+
+        self.c_fc1 = nn.Linear(hidden_size, n_hidden, bias=False)
+        self.c_fc2 = nn.Linear(hidden_size, n_hidden, bias=False)
+        self.expansion_dropout = nn.Dropout(config.hidden_dropout_prob)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = F.silu(self.c_fc1(x)) * self.c_fc2(x)
+        x = self.expansion_dropout(x)
+        return x
+
+
+class BertSwigluDown(nn.Module):
+    def __init__(self, config):
+        super(BertSwigluDown, self).__init__()
+        hidden_size = config.hidden_size
+        n_hidden = int(2 * config.intermediate_size / 3)
+        n_hidden = find_multiple(n_hidden, 128)
+
+        self.c_proj = nn.Linear(n_hidden, hidden_size, bias=False)
+        self.contraction_dropout = nn.Dropout(config.hidden_dropout_prob)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.c_proj(x)
+        x = self.contraction_dropout(x)
+        return x
+
+class BertLayer(nn.Module):
+    def __init__(self, config):
+        super(BertLayer, self).__init__()
+        self.attention = BertAttention(config)
+        self.PreAttentionLayerNorm = BertLayerNorm(config.hidden_size,
+                                                   eps=1e-12)
+        if config.pre_attn_ln_type != "default":
+            self.PreAttentionLayerNorm = Activation2Class[
+                config.pre_attn_ln_type](config.hidden_size, eps=1e-12)
+        #self.MidAttentionLayerNorm = BertLayerNorm(config.hidden_size, eps = 1e-12)
+        self.PostAttentionLayerNorm = BertLayerNorm(config.hidden_size,
+                                                    eps=1e-12)
+        if config.post_attn_ln_type != "default":
+            self.PostAttentionLayerNorm = Activation2Class[
+                config.post_attn_ln_type](config.hidden_size, eps=1e-12)
+        self.intermediate = BertIntermediate(config)
+        self.output = BertOutput(config)
+        if config.hidden_act == "swiglu":
+            self.intermediate = BertSwigluUp(config)
+            self.output = BertSwigluDown(config)
+
+    def forward(self, hidden_states, attention_mask, rope_cache):
+        input_layer_norm = self.PreAttentionLayerNorm(hidden_states)
+        attention_output = self.attention(input_layer_norm, attention_mask, rope_cache)
+        #atention_output = self.MidAttentionLayerNorm(attention_output)
+        intermediate_input = hidden_states + attention_output
+
+        intermediate_layer_norm = self.PostAttentionLayerNorm(
+            intermediate_input)
+        intermediate_output = self.intermediate(intermediate_layer_norm)
+        layer_output = self.output(intermediate_output)
+
+        return layer_output + intermediate_input
 
 
 class BertEncoder(nn.Module):
@@ -292,190 +645,59 @@ class BertEncoder(nn.Module):
 
         #Added later to make it similar to GPT-2
         self.FinalLayerNorm = BertLayerNorm(config.hidden_size, eps=1e-12)
-        
-
-
-        if config.layers is not None:
-            rope_caches = []
-            modules = []
-
-            if not config.layers_scheme and len(config.layers) != 1:
-                raise ValueError("""Invalid layer configuration. 
-                Provide either a 'layers_scheme' with corresponding layer definitions, 
-                or a single layer definition in 'config.layers' without a 'layers_scheme'.""")
-
-            name_to_config = {}
-            for layer in config.layers:
-                if not layer.get("layer_name"):
-                    raise ValueError("Each layer in config.layers must have a 'layer_name'.")
-                if not layer.get("layer_type"):
-                    raise ValueError(f"Layer '{layer['layer_name']}' must contain 'layer_type' attribute value")
-                layer_name = layer["layer_name"]
-                if layer_name in name_to_config:
-                    raise ValueError(f"Duplicate layer_name detected in config.layers: '{layer_name}'")
-                name_to_config[layer_name] = layer
-            if not config.layers_scheme:
-                config.layers_scheme = config.layers[0]["layer_name"]
-            ordered_names = config.layers_scheme.split("_")
-            
-            self.unique_layer_cfs = []
-            for i in range(config.num_hidden_layers):
-                layer_name = ordered_names[i % len(ordered_names)]
-                if layer_name not in name_to_config:
-                    raise ValueError(f""""
-                    Layer name '{layer_name}' from layers_scheme 
-                    not found in the config entries describing available layer types.
-                    """)
-
-                layer_config_dict = name_to_config[layer_name]
-                layer_type = layer_config_dict["layer_type"]
-                
-                config_class = LayerConfigToClass[layer_type]
-                final_layer_params = layer_config_dict.copy()
-                # Populate missing layer parameters from the main config object
-                init_signature = inspect.signature(config_class.__init__)
-                init_params = init_signature.parameters
-
-                for param_name in init_params:
-                    if param_name not in final_layer_params and hasattr(config, param_name):
-                        final_layer_params[param_name] = getattr(config, param_name)
-
-                layer_class = LayerTypeToClass[layer_type]
-                layer_config = config_class(**final_layer_params)
-                module = layer_class(layer_config)
-                modules.append(module)
-                # RelPE instantiation for different types of layers.
-                if i < len(ordered_names):
-                    self.unique_layer_cfs.append(final_layer_params)
-                    if (layer_config.pos_emb_type == PositionalEmbeddingsTypes.RELPE and
-                            layer_config.relpe_type is not None):
-                        relpe_type = RelPEType[layer_config.relpe_type.upper()]
-                    else:
-                        relpe_type = RelPEType.DUMMY
-
-                    relpe_class = RelPETypeToClass[relpe_type]
-                    if layer_type == "danet":
-                        rope_cache = relpe_class(
-                            seq_len=layer_config.max_position_embeddings,
-                            n_elem=layer_config.hidden_size // layer_config.num_attention_heads,
-                            num_heads=layer_config.num_attention_heads,
-                            sep_head_dim=False
-                        )
-                    else:
-                        rope_cache = relpe_class(
-                            seq_len=layer_config.max_position_embeddings,
-                            n_elem=layer_config.hidden_size // layer_config.num_attention_heads,
-                            num_heads=layer_config.num_attention_heads,
-                            sep_head_dim=True
-                        )
-                    rope_caches.append(rope_cache) # this approach works if only rope caches have no learnable parameters.
-
-                
-            self.num_layer_configs = len(self.unique_layer_cfs)
-            self.rope_caches = nn.ModuleList(rope_caches)
-            self.layer = nn.ModuleList(modules)
-
-        #legacy logic for backward compatibility, it will be used if the `layers` parameter is not specified.
+        if (config.pos_emb_type == PositionalEmbeddingsTypes.RELPE and
+                config.relpe_type is not None):
+            self.relpe_type = RelPEType[config.relpe_type.upper()]
         else:
-            if (config.pos_emb_type == PositionalEmbeddingsTypes.RELPE and
-                    config.relpe_type is not None):
-                self.relpe_type = RelPEType[config.relpe_type.upper()]
-            else:
-               self. relpe_type = RelPEType.DUMMY
-            self.rope_cache = RelPETypeToClass[self.relpe_type](
-                seq_len=config.max_position_embeddings,
-                n_elem=config.hidden_size // config.num_attention_heads,
-                sep_head_dim=True
-            )
-            self.layer = nn.ModuleList(
-                [BertLayer(config) for _ in range(config.num_hidden_layers)])
-            # logic for local attention scheme
-            if hasattr(config, 'local_scheme') and config.local_scheme:
-                scheme = config.local_scheme.split('_')
-                valid_codes = {'g', 'l', 'sl', 'swa'}
-                for code in scheme:
-                    if code not in valid_codes:
-                        raise ValueError(f"Unknown attention type code '{code}' in local_scheme. "
-                                            f"Valid codes are: {sorted(list(valid_codes))}")
-                for i, layer_module in enumerate(self.layer):
-                    code = scheme[i % len(scheme)]
-                    if code == 'l':
-                        layer_module.attention.self = BertSelfLocalAttention(config)
-                    elif code == 'sl':
-                        layer_module.attention.self = BertSelfShiftedLocalAttention(config)
-                    elif code == 'swa':
-                        layer_config = copy.deepcopy(config)
-                        layer_config.attention_kernel = "swa"
-                        layer_module.attention.self = BertSelfAttention(layer_config)
-                    layer_module._init_weights(config)
-                    # 'g' is the default and requires no change, so we just pass.
-            # fallback to old logic for backward compatibility
-            elif config.local_attention:
-                for i, layer in enumerate(self.layer):
-                    if i % 3 == 0:
-                        layer.attention.self = BertSelfLocalAttention(config)
-                    elif i % 3 == 1:
-                        layer.attention.self = BertSelfShiftedLocalAttention(config)
-                    layer._init_weights(config)
+            self. relpe_type = RelPEType.DUMMY
+        self.rope_cache = RelPETypeToClass[self.relpe_type](
+            config.max_position_embeddings, #args.max_seq_length
+            config.hidden_size // config.num_attention_heads,
+            #num_heads=config.num_attention_heads
+        )
 
-    def prepare_mask(self, hidden_states, attention_mask, layer_config):
-        if attention_mask is None:
-            attention_mask = torch.ones(
-                hidden_states.size(0), hidden_states.size(1),
-                dtype=hidden_states.dtype, device=hidden_states.device
-            )
-        if layer_config["layer_type"] == "danet":
-            dtype = hidden_states.dtype
-            
-            extended_attention_mask = (
-                attention_mask /
-                attention_mask.sum(axis=-1, keepdim=True).pow(1. / 3)
-            ).to(dtype).unsqueeze(-1)
-            local_attention_mask = (
-                    attention_mask / layer_config["window_size"] ** (1. / 3)
-            ).to(dtype).unsqueeze(-1)
-            extended_attention_mask = (
-                local_attention_mask,
-                extended_attention_mask
-            )
-            return extended_attention_mask
-        else:
-            attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
-            attention_mask = attention_mask.to(
-                hidden_states.dtype)  # fp16 compatibility
-            attention_mask = (1.0 - attention_mask) * -10000.0
-            return attention_mask
+        layer = BertLayer(config)
+        self.layer = nn.ModuleList(
+            [copy.deepcopy(layer) for _ in range(config.num_hidden_layers)])
+
+        # logic for local attention scheme
+        if hasattr(config, 'local_scheme') and config.local_scheme:
+            scheme = config.local_scheme.split('_')
+            valid_codes = {'g', 'l', 'sl', 'swa'}
+            for code in scheme:
+                if code not in valid_codes:
+                    raise ValueError(f"Unknown attention type code '{code}' in local_scheme. "
+                                     f"Valid codes are: {sorted(list(valid_codes))}")
+
+            for i, layer_module in enumerate(self.layer):
+                code = scheme[i % len(scheme)]
+                if code == 'l':
+                    layer_module.attention.self = BertSelfLocalAttention(config)
+                elif code == 'sl':
+                    layer_module.attention.self = BertSelfShiftedLocalAttention(config)
+                elif code == 'swa':
+                    layer_config = copy.deepcopy(config)
+                    layer_config.attention_kernel = "swa"
+                    layer_module.attention.self = BertSelfAttention(layer_config)
+                # 'g' is the default and requires no change, so we just pass.
+        # fallback to old logic for backward compatibility
+        elif config.local_attention:
+            for i, layer in enumerate(self.layer):
+                if i % 3 == 0:
+                    layer.attention.self = BertSelfLocalAttention(config)
+                elif i % 3 == 1:
+                    layer.attention.self = BertSelfShiftedLocalAttention(config)
 
     def forward(self,
                 hidden_states,
                 attention_mask,
-                output_all_encoded_layers=True,
-                **kwargs):
+                output_all_encoded_layers=True):
+
         all_encoder_layers = []
-        if hasattr(self, "unique_layer_cfs"):
-            masks = []
-            for i in range(self.num_layer_configs):
-                masks.append(self.prepare_mask(hidden_states, attention_mask,
-                                               self.unique_layer_cfs[i]))
-            for i, layer_module in enumerate(self.layer):
-                idx = i % self.num_layer_configs
-                hidden_states = layer_module(
-                    hidden_states,
-                    attention_mask=masks[idx],
-                    rope_cache=self.rope_caches[idx],
-                    # this line works only if rope caches have no learnable parameters.
-                    **kwargs)
-                if output_all_encoded_layers:
-                    all_encoder_layers.append(hidden_states)
-        else:
-            for i, layer_module in enumerate(self.layer):
-                hidden_states = layer_module(
-                    hidden_states,
-                    attention_mask=attention_mask,
-                    rope_cache=self.rope_cache,
-                    **kwargs)
-                if output_all_encoded_layers:
-                    all_encoder_layers.append(hidden_states)
+        for layer_module in self.layer:
+            hidden_states = layer_module(hidden_states, attention_mask, self.rope_cache)
+            if output_all_encoded_layers:
+                all_encoder_layers.append(hidden_states)
         if not output_all_encoded_layers:
             hidden_states = self.FinalLayerNorm(hidden_states)
             all_encoder_layers.append(hidden_states)
@@ -584,7 +806,7 @@ class PreTrainedBertModel(nn.Module):
         super(PreTrainedBertModel, self).__init__()
         self.config = config
 
-    def init_weights(self, module):
+    def init_bert_weights(self, module):
         """ Initialize the weights.
         """
         logger.info("Init BERT weights")
@@ -594,9 +816,13 @@ class PreTrainedBertModel(nn.Module):
             num_layers = self.config.num_hidden_layers
             std = self.config.initializer_range
             if hasattr(module, 'bert_output_layer'):
-                print("Accounting for accumulation on the residual path")
-                std = self.config.initializer_range / math.sqrt(
-                    2.0 * num_layers)
+                # Despite a seeming error, there wasn't weights mismatch among
+                # ranks, because this code was always used with DeepSpeed where
+                # it always broadcasted the weights from rank 0.
+                if torch.distributed.get_rank() == 0:
+                    print("Accounting for accumulation on the residual path")
+                    std = self.config.initializer_range / math.sqrt(
+                        2.0 * num_layers)
             module.weight.data.normal_(mean=0.0, std=std)
         elif isinstance(module, BertLayerNorm):
             module.bias.data.zero_()
@@ -776,28 +1002,40 @@ class BertModel(PreTrainedBertModel):
         self.embeddings = BertEmbeddings(config)
         self.encoder = BertEncoder(config)
         self.pooler = BertPooler(config)
-        # Do not initialize encoder layers here; only non-layer parts
-        self.embeddings.apply(self.init_weights)
-        self.pooler.apply(self.init_weights)
-        self.encoder.FinalLayerNorm.apply(self.init_weights)
+        self.apply(self.init_bert_weights)
         logger.info("Init BERT pretrain model")
 
     def forward(self,
                 input_ids,
                 token_type_ids=None,
                 attention_mask=None,
-                output_all_encoded_layers=True,
-                **kwargs):
+                output_all_encoded_layers=True):
+        if attention_mask is None:
+            attention_mask = torch.ones_like(input_ids)
+        if token_type_ids is None:
+            token_type_ids = torch.zeros_like(input_ids)
 
+        # We create a 3D attention mask from a 2D tensor mask.
+        # Sizes are [batch_size, 1, 1, to_seq_length]
+        # So we can broadcast to [batch_size, num_heads, from_seq_length, to_seq_length]
+        # this attention mask is more simple than the triangular masking of causal attention
+        # used in OpenAI GPT, we just need to prepare the broadcast dimension here.
+        extended_attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
 
+        # Since attention_mask is 1.0 for positions we want to attend and 0.0 for
+        # masked positions, this operation will create a tensor which is 0.0 for
+        # positions we want to attend and -10000.0 for masked positions.
+        # Since we are adding it to the raw scores before the softmax, this is
+        # effectively the same as removing these entirely.
+        extended_attention_mask = extended_attention_mask.to(
+            dtype=next(self.parameters()).dtype)  # fp16 compatibility
+        extended_attention_mask = (1.0 - extended_attention_mask) * -10000.0
 
         embedding_output = self.embeddings(input_ids, token_type_ids)
         encoded_layers = self.encoder(
             embedding_output,
-            attention_mask,
-            output_all_encoded_layers=output_all_encoded_layers,
-            **kwargs
-        )
+            extended_attention_mask,
+            output_all_encoded_layers=output_all_encoded_layers)
         sequence_output = encoded_layers[-1]
         pooled_output = self.pooler(sequence_output)
         if not output_all_encoded_layers:
@@ -873,8 +1111,7 @@ class TransformerForPreTraining(PreTrainedBertModel):
             self.head = self.mlm_head
         elif args.only_cls_task:
             self.head = self.cls_head
-        # Initialize only heads; encoder layers self-initialize.
-        self.cls.apply(self.init_weights)
+        self.apply(self.init_bert_weights)
         self.args = args
 
     def mlm_cls_head(self,
@@ -930,14 +1167,13 @@ class TransformerForPreTraining(PreTrainedBertModel):
         return next_sentence_loss
 
     def forward(self, input_ids, attention_mask=None, token_type_ids=None,
-                masked_lm_labels=None, label=None, log=True, **kwargs):
+                masked_lm_labels=None, label=None, log=True):
 
         sequence_output, pooled_output = self.bert(
             input_ids,
             token_type_ids,
             attention_mask,
             output_all_encoded_layers=False,
-            **kwargs
         )
 
         if masked_lm_labels is None:
@@ -1008,18 +1244,17 @@ class BertForMaskedLM(PreTrainedBertModel):
         self.bert = BertModel(config)
         self.cls = BertOnlyMLMHead(config,
                                    self.bert.embeddings.word_embeddings.weight)
-        # Initialize only head; encoder layers self-initialize.
-        self.cls.apply(self.init_weights)
+        self.apply(self.init_bert_weights)
 
     def forward(self,
                 input_ids,
                 token_type_ids=None,
                 attention_mask=None,
-                masked_lm_labels=None, **kwargs):
+                masked_lm_labels=None):
         sequence_output, _ = self.bert(input_ids,
                                        token_type_ids,
                                        attention_mask,
-                                       output_all_encoded_layers=False, **kwargs)
+                                       output_all_encoded_layers=False)
         prediction_scores = self.cls(sequence_output)
 
         if masked_lm_labels is not None:
@@ -1080,20 +1315,17 @@ class BertForNextSentencePrediction(PreTrainedBertModel):
         self.PATH_TO_BACKBONE = "bert"
         self.bert = BertModel(config)
         self.cls = BertOnlyNSPHead(config)
-        # Initialize only head; encoder layers self-initialize.
-        self.cls.apply(self.init_weights)
+        self.apply(self.init_bert_weights)
 
     def forward(self,
                 input_ids,
                 token_type_ids=None,
                 attention_mask=None,
-                next_sentence_label=None,
-                **kwargs):
+                next_sentence_label=None):
         _, pooled_output = self.bert(input_ids,
                                      token_type_ids,
                                      attention_mask,
-                                     output_all_encoded_layers=False,
-                                     **kwargs)
+                                     output_all_encoded_layers=False)
         seq_relationship_score = self.cls(pooled_output)
 
         if next_sentence_label is not None:
@@ -1158,20 +1390,17 @@ class TransformerForSequenceClassification(PreTrainedBertModel):
         self.bert = BertModel(config)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.classifier = nn.Linear(config.hidden_size, self.num_labels)
-        # Initialize only head; encoder layers self-initialize.
-        self.classifier.apply(self.init_weights)
+        self.apply(self.init_bert_weights)
 
     def forward(self,
                 input_ids,
                 label=None,
                 attention_mask=None,
-                token_type_ids=None,
-                **kwargs):
+                token_type_ids=None):
         _, pooled_output = self.bert(input_ids,
                                      token_type_ids,
                                      attention_mask,
-                                     output_all_encoded_layers=False,
-                                     **kwargs)
+                                     output_all_encoded_layers=False)
         pooled_output = self.dropout(pooled_output)
         logits = self.classifier(pooled_output)
 
@@ -1201,8 +1430,7 @@ class TransformerForRegression(PreTrainedBertModel):
         self.classifier = self.cls.seq_relationship
         """
 
-        # Initialize only head; encoder layers self-initialize.
-        self.regressor.apply(self.init_weights)
+        self.apply(self.init_bert_weights)
         self.use_local_attention = config.local_attention
 
     def forward(self,
@@ -1210,13 +1438,11 @@ class TransformerForRegression(PreTrainedBertModel):
                 label=None,
                 attention_mask=None,
                 token_type_ids=None,
-                checkpoint_activations=False, 
-                **kwargs):
+                checkpoint_activations=False):
         _, pooled_output = self.bert(input_ids,
                                      token_type_ids,
                                      attention_mask=attention_mask,
-                                     output_all_encoded_layers=False, 
-                                     **kwargs)
+                                     output_all_encoded_layers=False)
         pooled_output = self.dropout(pooled_output)
         logits = self.regressor(pooled_output)
 
@@ -1285,9 +1511,7 @@ class TransformerForAANMatching(PreTrainedBertModel):
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.activation = nn.GELU(approximate='tanh')
         self.classifier = nn.Linear(config.hidden_size, self.num_labels)
-        # Initialize only head parts; encoder layers self-initialize.
-        self.dense.apply(self.init_weights)
-        self.classifier.apply(self.init_weights)
+        self.apply(self.init_bert_weights)
 
     def forward(self,
                 input_ids,
@@ -1296,20 +1520,17 @@ class TransformerForAANMatching(PreTrainedBertModel):
                 attention_mask2=None,
                 label=None,
                 token_type_ids=None,
-                checkpoint_activations=False, 
-                **kwargs):
+                checkpoint_activations=False):
         checkpoint_activations = False
 
         _, pooled_output1 = self.bert(input_ids,
                                      token_type_ids,
                                      attention_mask=attention_mask,
-                                     output_all_encoded_layers=False, 
-                                     **kwargs)
+                                     output_all_encoded_layers=False)
         _, pooled_output2 = self.bert(input_ids2,
                                      token_type_ids,
                                      attention_mask=attention_mask2,
-                                     output_all_encoded_layers=False, 
-                                     **kwargs)
+                                     output_all_encoded_layers=False)
         hidden_states = torch.cat(
             [pooled_output1, pooled_output2,
             pooled_output1 * pooled_output2, pooled_output1 - pooled_output2],
@@ -1379,23 +1600,20 @@ class BertForMultipleChoice(PreTrainedBertModel):
         self.bert = BertModel(config)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.classifier = nn.Linear(config.hidden_size, 1)
-        # Initialize only head; encoder layers self-initialize.
-        self.classifier.apply(self.init_weights)
+        self.apply(self.init_bert_weights)
 
     def forward(self,
                 input_ids,
                 token_type_ids=None,
                 attention_mask=None,
-                labels=None, 
-                **kwargs):
+                labels=None):
         flat_input_ids = input_ids.view(-1, input_ids.size(-1))
         flat_token_type_ids = token_type_ids.view(-1, token_type_ids.size(-1))
         flat_attention_mask = attention_mask.view(-1, attention_mask.size(-1))
         _, pooled_output = self.bert(flat_input_ids,
                                      flat_token_type_ids,
                                      flat_attention_mask,
-                                     output_all_encoded_layers=False, 
-                                     **kwargs)
+                                     output_all_encoded_layers=False)
         pooled_output = self.dropout(pooled_output)
         logits = self.classifier(pooled_output)
         reshaped_logits = logits.view(-1, self.num_choices)
@@ -1460,15 +1678,13 @@ class BertForTokenClassification(PreTrainedBertModel):
         self.bert = BertModel(config)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.classifier = nn.Linear(config.hidden_size, num_labels)
-        # Initialize only head; encoder layers self-initialize.
-        self.classifier.apply(self.init_weights)
+        self.apply(self.init_bert_weights)
 
     def forward(self,
                 input_ids,
                 token_type_ids=None,
                 attention_mask=None,
-                labels=None, 
-                **kwargs):
+                labels=None):
         sequence_output, _ = self.bert(input_ids,
                                        token_type_ids,
                                        attention_mask,
@@ -1538,21 +1754,18 @@ class BertForQuestionAnswering(PreTrainedBertModel):
         # TODO check with Google if it's normal there is no dropout on the token classifier of SQuAD in the TF version
         # self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.qa_outputs = nn.Linear(config.hidden_size, 2)
-        # Initialize only head; encoder layers self-initialize.
-        self.qa_outputs.apply(self.init_weights)
+        self.apply(self.init_bert_weights)
 
     def forward(self,
                 input_ids,
                 token_type_ids=None,
                 attention_mask=None,
                 start_positions=None,
-                end_positions=None, 
-                **kwargs):
+                end_positions=None):
         sequence_output, _ = self.bert(input_ids,
                                        token_type_ids,
                                        attention_mask,
-                                       output_all_encoded_layers=False, 
-                                       **kwargs)
+                                       output_all_encoded_layers=False)
         logits = self.qa_outputs(sequence_output)
         start_logits, end_logits = logits.split(1, dim=-1)
         start_logits = start_logits.squeeze(-1)
