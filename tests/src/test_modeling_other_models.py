@@ -41,26 +41,52 @@ BASE_CONFIG = {
 
 CASES = [
     {"id": "softmax_global", "override": {}},
-    {"id": "linear_global", "override": {"attention_kernel": "linear", "feature_map": "identity"}},
-    {"id": "power_global", "override": {"attention_kernel": "power", "power": 2}},
+    {
+        "id": "linear_global",
+        "override": {
+            "attention_kernel": "linear",
+            "feature_map": "identity",
+        },
+    },
+    {
+        "id": "power_global",
+        "override": {"attention_kernel": "power", "power": 2},
+    },
     {
         "id": "rope_global",
-        "override": {"pos_emb_type": "relpe", "relpe_type": "rope", "attention_kernel": "softmax"},
+        "override": {
+            "pos_emb_type": "relpe",
+            "relpe_type": "rope",
+            "attention_kernel": "softmax",
+        },
     },
-    {"id": "legacy_local_fallback", "override": {"local_attention": True, "local_scheme": None}},
+    {
+        "id": "legacy_local_fallback",
+        "override": {"local_attention": True, "local_scheme": None},
+    },
     {
         "id": "explicit_local_scheme",
-        "override": {"local_attention": False, "local_scheme": "g_l_sl_swa", "window_size": 32},
+        "override": {
+            "local_attention": False,
+            "local_scheme": "g_l_sl_swa",
+            "window_size": 32,
+        },
     },
 ]
 
 
 def _patch_dist_get_rank(monkeypatch):
-    monkeypatch.setattr(torch.distributed, "get_rank", lambda: 0, raising=False)
+    monkeypatch.setattr(
+        torch.distributed, "get_rank", lambda: 0, raising=False
+    )
 
 
 def _make_args():
-    return SimpleNamespace(num_labels=2, only_mlm_task=False, only_cls_task=False)
+    return SimpleNamespace(
+        num_labels=2,
+        only_mlm_task=False,
+        only_cls_task=False,
+    )
 
 
 def _build_case_config(case):
@@ -95,7 +121,10 @@ def _build_layers_equivalent_config(old_cfg):
             if code not in unique_codes:
                 unique_codes.append(code)
         code_to_name = {code: f"layer{code}" for code in unique_codes}
-        cfg["layers"] = [make_layer(code_to_name[code], code) for code in unique_codes]
+        cfg["layers"] = [
+            make_layer(code_to_name[code], code)
+            for code in unique_codes
+        ]
         cfg["layers_scheme"] = "_".join(code_to_name[code] for code in codes)
     elif old_cfg.get("local_attention"):
         cfg["layers"] = [
@@ -123,18 +152,24 @@ def _assert_state_dict_compatible(model, state_dict):
     missing = sorted(model_keys - state_keys)
     unexpected = sorted(state_keys - model_keys)
     missing_suffix = " (truncated to first 10)" if len(missing) > 10 else ""
-    unexpected_suffix = " (truncated to first 10)" if len(unexpected) > 10 else ""
+    unexpected_suffix = (
+        " (truncated to first 10)" if len(unexpected) > 10 else ""
+    )
     assert not missing and not unexpected, (
         f"State dict mismatch: "
-        f"missing_count={len(missing)}{missing_suffix}, first_10_missing={missing[:10]}; "
-        f"unexpected_count={len(unexpected)}{unexpected_suffix}, first_10_unexpected={unexpected[:10]}"
+        f"missing_count={len(missing)}{missing_suffix}, "
+        f"first_10_missing={missing[:10]}; "
+        f"unexpected_count={len(unexpected)}{unexpected_suffix}, "
+        f"first_10_unexpected={unexpected[:10]}"
     )
     model.load_state_dict(state_dict, strict=True)
 
 
 def _fixed_batch(config, seq_len=16, batch_size=2):
     vocab_size = config["vocab_size_or_config_json_file"]
-    input_ids = torch.arange(batch_size * seq_len, dtype=torch.long).view(batch_size, seq_len) % vocab_size
+    input_ids = torch.arange(
+        batch_size * seq_len, dtype=torch.long
+    ).view(batch_size, seq_len) % vocab_size
     attention_mask = torch.ones((batch_size, seq_len), dtype=torch.long)
     if seq_len > 1:
         for i in range(batch_size):
@@ -200,7 +235,9 @@ def test_transformers_old_cfg_in_legacy_vs_new_modeling_outputs(case, monkeypatc
 
     torch.manual_seed(2026)
     legacy_ref = _instantiate_pretraining(modeling_legacy, cfg, args)
-    state_dict = {k: v.detach().clone() for k, v in legacy_ref.state_dict().items()}
+    state_dict = {
+        k: v.detach().clone() for k, v in legacy_ref.state_dict().items()
+    }
 
     legacy_model = _instantiate_pretraining(modeling_legacy, cfg, args)
     new_model = _instantiate_pretraining(modeling_new, cfg, args)
@@ -209,12 +246,22 @@ def test_transformers_old_cfg_in_legacy_vs_new_modeling_outputs(case, monkeypatc
 
     legacy_logits = _forward_logits(legacy_model, batch)
     new_logits = _forward_logits(new_model, batch)
-    _assert_exact_tensor_eq(legacy_logits[0], new_logits[0], f"{case['id']} MLM logits mismatch")
-    _assert_exact_tensor_eq(legacy_logits[1], new_logits[1], f"{case['id']} CLS logits mismatch")
+    _assert_exact_tensor_eq(
+        legacy_logits[0],
+        new_logits[0],
+        f"{case['id']} MLM logits mismatch",
+    )
+    _assert_exact_tensor_eq(
+        legacy_logits[1],
+        new_logits[1],
+        f"{case['id']} CLS logits mismatch",
+    )
 
     legacy_loss = _forward_loss(legacy_model, batch)
     new_loss = _forward_loss(new_model, batch)
-    _assert_exact_tensor_eq(legacy_loss, new_loss, f"{case['id']} loss mismatch")
+    _assert_exact_tensor_eq(
+        legacy_loss, new_loss, f"{case['id']} loss mismatch"
+    )
 
 
 @pytest.mark.parametrize("case", CASES, ids=[case["id"] for case in CASES])
@@ -227,7 +274,9 @@ def test_transformers_old_vs_new_cfg_in_new_modeling_outputs(case, monkeypatch):
 
     torch.manual_seed(2026)
     old_ref = _instantiate_pretraining(modeling_new, old_cfg, args)
-    state_dict = {k: v.detach().clone() for k, v in old_ref.state_dict().items()}
+    state_dict = {
+        k: v.detach().clone() for k, v in old_ref.state_dict().items()
+    }
 
     old_model = _instantiate_pretraining(modeling_new, old_cfg, args)
     layers_model = _instantiate_pretraining(modeling_new, layers_cfg, args)
@@ -236,9 +285,19 @@ def test_transformers_old_vs_new_cfg_in_new_modeling_outputs(case, monkeypatch):
 
     old_logits = _forward_logits(old_model, batch)
     layers_logits = _forward_logits(layers_model, batch)
-    _assert_exact_tensor_eq(old_logits[0], layers_logits[0], f"{case['id']} old-vs-layers MLM logits mismatch")
-    _assert_exact_tensor_eq(old_logits[1], layers_logits[1], f"{case['id']} old-vs-layers CLS logits mismatch")
+    _assert_exact_tensor_eq(
+        old_logits[0],
+        layers_logits[0],
+        f"{case['id']} old-vs-layers MLM logits mismatch",
+    )
+    _assert_exact_tensor_eq(
+        old_logits[1],
+        layers_logits[1],
+        f"{case['id']} old-vs-layers CLS logits mismatch",
+    )
 
     old_loss = _forward_loss(old_model, batch)
     layers_loss = _forward_loss(layers_model, batch)
-    _assert_exact_tensor_eq(old_loss, layers_loss, f"{case['id']} old-vs-layers loss mismatch")
+    _assert_exact_tensor_eq(
+        old_loss, layers_loss, f"{case['id']} old-vs-layers loss mismatch"
+    )
