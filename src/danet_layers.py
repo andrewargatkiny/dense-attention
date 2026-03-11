@@ -37,7 +37,8 @@ class DANetLayerWithLocalAttention(nn.Module):
     Functions identically to `DANetLayer` for global attention."""
     code_to_layer = {
         'g': 'global', 'l': 'local', 'sl': 'shifted_local',
-        'sw': 'sliding_window', 'softmax': 'softmax', 'dg': 'global'
+        'sw': 'sliding_window', 'softmax': 'softmax', 'dg': 'global',
+        'dsw': 'sliding_window'
     }
     def __init__(self, config: ModelConfig, layer_number: int=0):
         super(DANetLayerWithLocalAttention, self).__init__()
@@ -59,9 +60,9 @@ class DANetLayerWithLocalAttention(nn.Module):
             # Local mask: each token gets multiplied by window_size ** -1/3 or 0.
             self.prepare_mask_fn = lambda x: x[0]  # local mask
 
-        if code == "dg":
-            scale = config.dilation_size ** (1/3)
-            self.prepare_mask_fn = lambda x: x[1] * scale # global mask
+        if code == "dg" or code == "dsw":
+            #scale = config.dilation_size ** (1/3)
+            #self.prepare_mask_fn = lambda x: x[1] * scale # global mask
             dilated = True
         else:
             dilated = False
