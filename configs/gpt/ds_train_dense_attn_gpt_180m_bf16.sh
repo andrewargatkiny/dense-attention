@@ -9,7 +9,7 @@ SEED=${SEED:-42}
 #NODE=${NODE:-0}
 MASTER_PORT=${MASTER_PORT:-29500}
 CONFIG=${CONFIG:-${base_dir}/configs/gpt/gpt_180m_fineweb.json}
-DS_CONFIG=${DS_CONFIG:-${base_dir}/configs/gpt/deepspeed_config_2k.json}
+DS_CONFIG=${DS_CONFIG:-${base_dir}/configs/gpt/deepspeed_transformer_2k.json}
 
 MODEL_CONFIG=${MODEL_CONFIG:-"$CONFIG"}
 DATA_CONFIG=${DATA_CONFIG:-"$CONFIG"}
