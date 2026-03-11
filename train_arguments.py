@@ -376,7 +376,7 @@ def get_argument_parser():
         help='Reinitialize pooler weights to all 0s before training.'
     )
     parser.add_argument(
-        '--dict_backend',
+        '--dist_backend',
         type=str,
         default="nccl",
         help='Backend for distributed training.'

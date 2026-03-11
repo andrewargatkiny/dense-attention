@@ -17,3 +17,5 @@ nltk
 tensorboardX==2.6.1
 clearml
 pytest
+matplotlib
+wandb
