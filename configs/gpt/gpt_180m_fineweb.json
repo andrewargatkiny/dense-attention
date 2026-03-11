@@ -1,7 +1,7 @@
 {
     "name": "dense_attention_bert",
     "model_config": {
-        "vocab_size_or_config_json_file": 32000,
+        "vocab_size_or_config_json_file": 128256,
         "hidden_size": 1024,
         "num_hidden_layers": 16,
         "num_attention_heads": 1,
@@ -59,7 +59,7 @@
                     "chunk_size": 62
                 }
             ],
-            "total_samples": 162,
+            "total_samples": 140,
             "max_seq_length": 2048,
             "tokenizer_name": "unsloth/Meta-Llama-3.1-8B",
             "pad_samples": false
