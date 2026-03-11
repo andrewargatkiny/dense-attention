@@ -735,7 +735,7 @@ def prepare_optimizer_parameters(args, model):
 
 def prepare_model_optimizer(args):
     # Initialize torch distributed
-    deepspeed.init_distributed(dist_backend=args.dict_backend)
+    deepspeed.init_distributed(dist_backend=args.dist_backend)
     args.local_rank = int(os.environ['LOCAL_RANK'])
     model_class = args.task.model_type
     config_class = ModelConfig
