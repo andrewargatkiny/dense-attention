@@ -2,7 +2,7 @@
     "name": "dense_attention_bert",
     "model_config": {
         "vocab_size_or_config_json_file": 128256,
-        "hidden_size": 1024,
+        "hidden_size": 768,
         "num_hidden_layers": 16,
         "num_attention_heads": 1,
         "intermediate_size": 4,
