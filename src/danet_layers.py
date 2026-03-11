@@ -3,7 +3,7 @@ import warnings
 
 from torch import nn
 
-from src.other_models.modeling import BertAttention, BertLocalAttention, BertShiftedLocalAttention
+from src.other_models.transformers import BertAttention, BertLocalAttention, BertShiftedLocalAttention
 from src.activations import StandardLayerNorm, Activation2Class
 from src.dense_attention import DenseAttention
 from src.expanded_ffn import ExpandedFFN, SwiGLU
@@ -125,3 +125,22 @@ class TransformerLayer(nn.Module):
         layer_output = self.ffn(intermediate_layer_norm)
         return layer_output + intermediate_input
 
+
+class DANetLayerWrapper(nn.Module):
+    def __init__(self, config: ModelConfig):
+        super(DANetLayerWrapper, self).__init__()
+        self.config = config
+        self.layer = DANetLayerWithLocalAttention(config)
+        self.apply(self.init_weights)
+
+    def init_weights(self, module):
+        std = self.config.initializer_range
+        if isinstance(module, nn.Embedding):
+            module.weight.data.normal_(mean=0, std=std)
+        elif isinstance(module, nn.Linear):
+            module.weight.data.uniform_(-std, std)
+            if module.bias is not None:
+                module.bias.data.zero_()
+
+    def forward(self, hidden_states, attention_mask, rope_cache=None, **kwargs):
+        return self.layer(hidden_states, attention_mask, rope_cache)
