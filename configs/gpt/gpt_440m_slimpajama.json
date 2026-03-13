@@ -67,6 +67,7 @@
             "hf_sources": [
                 {
                     "name": "/home/aargatkin/data/slimpajama/val",
+                    "split": "validation",
                     "chunk_size": 75000
                 }
             ],
