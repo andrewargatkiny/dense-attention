@@ -1,0 +1,79 @@
+{
+    "name": "dense_attention_bert",
+    "model_config": {
+        "vocab_size_or_config_json_file": 50304,
+        "hidden_size": 1024,
+        "num_hidden_layers": 24,
+        "num_attention_heads": 16,
+        "intermediate_size": 4096,
+        "hidden_dropout_prob": 0,
+        "hidden_act": "swiglu",
+        "attention_kernel": "softmax",
+        "attention_probs_dropout_prob": 0,
+        "embedding_dropout": 0,
+        "max_position_embeddings": 4096,
+        "token_type_embeddings": false,
+        "type_vocab_size": 2,
+        "initializer_range": 0.02,
+        "pos_emb_type": "relpe",
+        "relpe_type": "rope",
+        "causal": true,
+        "local_attention": false
+
+    },
+    "data": {
+        "training": {
+            "hf_sources": [
+                {
+                    "name": "/home/aargatkin/data/slimpajama/train",
+                    "chunk_size": 600000
+                }
+            ],
+            "total_samples": 262144,
+            "max_seq_length": 2048,
+            "tokenizer_name": "openai-community/gpt2",
+            "pad_samples": false
+        },
+        "validation": {
+            "hf_sources": [
+                {
+                    "name": "/home/aargatkin/data/pg19/test",
+                    "offset": 0,
+                    "split": "test",
+                    "chunk_size": 100
+                }
+            ],
+            "total_samples": 4096,
+            "max_seq_length": 2048,
+            "tokenizer_name": "openai-community/gpt2",
+            "pad_samples": false
+        },
+        "test": {
+            "hf_sources": [
+                {
+                    "name": "/home/aargatkin/data/slimpajama/val",
+                    "split": "validation",
+                    "chunk_size": 75000
+                }
+            ],
+            "total_samples": 8192,
+            "max_seq_length": 2048,
+            "tokenizer_name": "openai-community/gpt2",
+            "pad_samples": false
+        }
+    },
+    "training": {
+        "num_epochs": 50,
+        "lr_scheduler_params": {
+            "warmup_ratio": 0.015,
+            "max_lr": 2.5e-3,
+            "min_lr": 2.5e-4,
+            "one_cycle_steps": 100000
+        },
+        "lr_schedule": "true_cosine",
+        "lr_offset": 0,
+        "learning_rate": 2.5e-3,
+        "weight_decay": 0.1,
+        "num_workers": 4
+    }
+}
