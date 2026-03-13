@@ -14,7 +14,7 @@ DS_CONFIG=${DS_CONFIG:-${base_dir}/configs/gpt/deepspeed_transformer_2k.json}
 MODEL_CONFIG=${MODEL_CONFIG:-"$CONFIG"}
 DATA_CONFIG=${DATA_CONFIG:-"$CONFIG"}
 TRAINING_CONFIG=${TRAINING_CONFIG:-"$CONFIG"}
-TASK_TYPE=${TASK_TYPE:-"gpt_pretraining"}
+TASK_TYPE=${TASK_TYPE:-"transformer_gpt_pretraining"}
 TRACKING_SYSTEM=${TRACKING_SYSTEM:-clearml}
 
 JOB_NAME_SUFFIX=${JOB_NAME_SUFFIX-"_$(date +'%Y-%m-%d_%H-%M')"}
