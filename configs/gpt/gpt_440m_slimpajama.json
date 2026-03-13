@@ -58,7 +58,7 @@
                     "chunk_size": 100
                 }
             ],
-            "total_samples": 32768,
+            "total_samples": 4096,
             "max_seq_length": 2048,
             "tokenizer_name": "openai-community/gpt2",
             "pad_samples": false
