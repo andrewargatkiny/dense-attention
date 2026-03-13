@@ -8,8 +8,8 @@ BASE_JOB_NAME="gpt_pretraining"
 SEED=${SEED:-42}
 #NODE=${NODE:-0}
 MASTER_PORT=${MASTER_PORT:-29500}
-CONFIG=${CONFIG:-${base_dir}/configs/gpt/gpt_440m_slimpajama.json}
-DS_CONFIG=${DS_CONFIG:-${base_dir}/configs/gpt/deepspeed_2k_440m.json}
+CONFIG=${CONFIG:-${base_dir}/configs/gpt/danet_145m_slimpajama.json}
+DS_CONFIG=${DS_CONFIG:-${base_dir}/configs/gpt/deepspeed_transformer_2k.json}
 
 MODEL_CONFIG=${MODEL_CONFIG:-"$CONFIG"}
 DATA_CONFIG=${DATA_CONFIG:-"$CONFIG"}
@@ -85,7 +85,7 @@ NCCL_TREE_THRESHOLD=0 deepspeed --master_port "$MASTER_PORT" ${base_dir}/deepspe
 --ckpt_to_save 1 \
 --keep_last_ckpts 1 \
 --keep_ckpt_every 14 \
---keep_ckpt_epochs "7,14,21,28,35,42,48" \
+--keep_ckpt_epochs "14,28,42,56,70,97" \
 --seed "$SEED" \
 --job_name $JOB_NAME \
 --deepspeed_config "$DS_CONFIG" \
