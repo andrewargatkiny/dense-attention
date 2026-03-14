@@ -66,8 +66,8 @@
         "num_epochs": 50,
         "lr_scheduler_params": {
             "warmup_ratio": 0.015,
-            "max_lr": 2.5e-3,
-            "min_lr": 2.5e-4,
+            "max_lr": 1e-3,
+            "min_lr": 1e-4,
             "one_cycle_steps": 100000
         },
         "lr_schedule": "true_cosine",
