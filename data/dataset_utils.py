@@ -35,18 +35,20 @@ def create_dataloader(train_data, num_workers,
 
 
 @dataclass
-class HFDatasetParams:
+class DatasetParams:
     """
-    Configuration for loading a HuggingFace dataset, potentially for interleaving.
+    Configuration for loading a dataset (from the Hugging Face or local files), 
+    potentially for interleaving.
 
     This dataclass holds all parameters needed to load a portion of a single
-    HuggingFace dataset. Multiple instances of this class can be used to specify
-    several datasets that are then interleaved into one, using the 'dataset_weight'
+    dataset. Multiple instances of this class can be used to specify several
+    datasets that are then interleaved into one, using the 'dataset_weight'
     parameter of each configuration.
 
     Attributes:
-        name (str): The name of the dataset on the Hub (e.g.
-            "HuggingFaceFW/fineweb-edu").
+        name_or_path (str): The name of the dataset on the Hub (e.g.
+            "HuggingFaceFW/fineweb-edu") or a local path to dataset files 
+            (e.g. "/data/bert_mlm/fineweb-edu").
         chunk_size (int): The number of records to take after the offset.
         subset (Optional[str], optional): The subset of the dataset (e.g.
             "sample-100BT"). Defaults to None.
@@ -73,7 +75,7 @@ class HFDatasetParams:
             Defaults to 2**64.
     """
     # Required parameters
-    name: str
+    name_or_path: str
     chunk_size: int
 
     # Optional parameters with default values
@@ -90,19 +92,19 @@ class HFDatasetParams:
     filter_leq_value: int = 2**64
 
 
-def load_hf_datasets(dataset_configs: List[dict],
+def load_datasets(dataset_configs: List[dict],
                      seed: Optional[int] = None) -> datasets.IterableDataset:
     """
-    Loads one or possibly several HuggingFace datasets, specified in
-    `dataset_configs`, in streaming mode and mixes them into one.
+    Loads one or several datasets (from the Hugging Face or local files), 
+    specified in `dataset_configs`, in streaming mode, and mixes them into one.
 
     Args:
-    dataset_configs (List[dict]): A list of HG dataset configurations to load
-        and interleave.
-    seed (Optional[int], optional): An optional seed for the pseudo-random
-        interleaving process. Defaults to None.
+        dataset_configs (List[dict]): A list of dataset configurations (each may
+            refer to either a HF dataset name or a local path) to load and interleave.
+        seed (Optional[int], optional): An optional seed for the pseudo-random
+            interleaving process. Defaults to None.
     """
-    dataset_configs = [HFDatasetParams(**config) for config in dataset_configs]
+    dataset_configs = [DatasetParams(**config) for config in dataset_configs]
     if len(dataset_configs) == 1:
         return load_hf_dataset(dataset_configs[0])
     ds_list = []
@@ -117,17 +119,17 @@ def load_hf_datasets(dataset_configs: List[dict],
                                         probabilities=ds_weights,
                                         stopping_strategy="all_exhausted")
 
-def load_hf_dataset(dataset_config: HFDatasetParams) -> datasets.IterableDataset:
+def load_hf_dataset(dataset_config: DatasetParams) -> datasets.IterableDataset:
     """
-    Loads a portion of a single HuggingFace dataset in streaming mode using a
-    HFDatasetParams config.
+    Loads a portion of a single dataset (from the Hugging Face or local files)
+    in streaming mode using a DatasetParams config.
 
     Args:
-        dataset_config (HFDatasetParams): Configuration object for the dataset.
+        dataset_config (DatasetParams): Configuration object for the dataset.
     """
     TEXT_COLUMN = "text"
     ds = datasets.load_dataset(
-        dataset_config.name,
+        dataset_config.name_or_path,
         dataset_config.subset,
         split=dataset_config.split,
         trust_remote_code=dataset_config.trust_remote_code,
@@ -137,7 +139,7 @@ def load_hf_dataset(dataset_config: HFDatasetParams) -> datasets.IterableDataset
         dataset_config.world_size,
         dataset_config.global_rank
     ).skip(dataset_config.offset).take(dataset_config.chunk_size)
-    for name in ['code', 'page']:
+    for name in ['code', 'page', 'content']:
         if name in ds.features:
             ds = ds.rename_column(name, TEXT_COLUMN)
     # Optionally choose only entries where some columns are geq or
@@ -201,17 +203,17 @@ class ShardedDatasetWrapper:
             self.world_size = dist.get_world_size()
 
         self.use_hf_sources = False
-        if self.dataset_config.get("hf_sources"):
+        if self.dataset_config.get("sources"):
             self.use_hf_sources = True
             self.chunk_sizes = dict()
             self.current_offsets = dict()
-            for source in dataset_config["hf_sources"]:
+            for source in dataset_config["sources"]:
                 # Number of raw dataset entries to treat as one chunk
-                self.chunk_sizes[source["name"]] = source.get(
+                self.chunk_sizes[source["name_or_path"]] = source.get(
                     "chunk_size", 2 ** 20)
                 # A pointer which moves `chunk_size` entries over the
                 # dataset each epoch.
-                self.current_offsets[source["name"]] = source.get("offset", 0)
+                self.current_offsets[source["name_or_path"]] = source.get("offset", 0)
         # Initialize dataset files
         self.dataset_path = os.path.join(
             base_dir,
@@ -238,12 +240,12 @@ class ShardedDatasetWrapper:
 
     def dataset_order_info(self):
         if self.use_hf_sources:
-            for source in self.dataset_config["hf_sources"]:
+            for source in self.dataset_config["sources"]:
                 print(f"rank {self.global_rank} "
-                      f"dataset name {source['name']} "
+                      f"dataset name {source['name_or_path']} "
                       f"subset {source.get('subset')}, "
-                      f"offset {self.current_offsets[source['name']]} "
-                      f"entries {self.chunk_sizes[source['name']]}")
+                      f"offset {self.current_offsets[source['name_or_path']]} "
+                      f"entries {self.chunk_sizes[source['name_or_path']]}")
             return
         for i in range(0, self.num_files // 4):
             print(f"rank {self.global_rank} {i}-th foursome of files: {self.dataset_files[4 * i:4 * (i + 1)]}")
@@ -260,9 +262,9 @@ class ShardedDatasetWrapper:
         dataset_config = copy.deepcopy(self.dataset_config)
         offset_or_datafile = self._get_shard_file(index)
         if self.use_hf_sources:
-            for source in dataset_config["hf_sources"]:
-                source["offset"] = offset_or_datafile[source["name"]]
-                source["chunk_size"] = self.chunk_sizes[source["name"]]
+            for source in dataset_config["sources"]:
+                source["offset"] = offset_or_datafile[source["name_or_path"]]
+                source["chunk_size"] = self.chunk_sizes[source["name_or_path"]]
                 source["world_size"] = self.world_size
                 source["global_rank"] = self.global_rank
                 self.logger.info(

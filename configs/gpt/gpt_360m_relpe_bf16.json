@@ -35,9 +35,9 @@
     },
     "data": {
         "training": {
-            "hf_sources": [
+            "sources": [
                 {
-                    "name": "HuggingFaceFW/fineweb-edu",
+                    "name_or_path": "HuggingFaceFW/fineweb-edu",
                     "subset": "sample-100BT",
                     "split": "train",
                     "chunk_size": 600000
@@ -46,12 +46,13 @@
             "total_samples": 131072,
             "max_seq_length": 4096,
             "tokenizer_name": "huggyllama/llama-7b",
-            "pad_samples": false
+            "pad_samples": false,
+            "add_base_dir": false
         },
         "validation": {
-            "hf_sources": [
+            "sources": [
                 {
-                    "name": "EleutherAI/wikitext_document_level",
+                    "name_or_path": "EleutherAI/wikitext_document_level",
                     "subset": "wikitext-2-raw-v1",
                     "split": "test",
                     "offset": 0,
@@ -61,12 +62,13 @@
             "total_samples": 81,
             "max_seq_length": 4096,
             "tokenizer_name": "huggyllama/llama-7b",
-            "pad_samples": false
+            "pad_samples": false,
+            "add_base_dir": false
         },
         "test": {
-            "hf_sources": [
+            "sources": [
                 {
-                    "name": "HuggingFaceFW/fineweb-edu",
+                    "name_or_path": "HuggingFaceFW/fineweb-edu",
                     "subset": null,
                     "split": "train",
                     "offset": 10000,
@@ -76,7 +78,8 @@
             "total_samples": 16384,
             "max_seq_length": 4096,
             "tokenizer_name": "huggyllama/llama-7b",
-            "pad_samples": false
+            "pad_samples": false,
+            "add_base_dir": false
         }
     },
     "training": {

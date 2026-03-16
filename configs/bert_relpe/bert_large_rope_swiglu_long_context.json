@@ -33,15 +33,15 @@
     },
     "data": {
         "training": {
-            "hf_sources": [
+            "sources": [
                 {
-                    "name": "HuggingFaceTB/dclm-edu",
+                    "name_or_path": "HuggingFaceTB/dclm-edu",
                     "split": "train",
                     "chunk_size": 75000,
                     "dataset_weight": 0.75
                 },
                 {
-                    "name": "codeparrot/github-code",
+                    "name_or_path": "codeparrot/github-code",
                     "split": "train",
                     "trust_remote_code": true,
                     "chunk_size": 25000,
@@ -51,19 +51,20 @@
             "shuffle": true,
             "seed": 1,
             "max_seq_length": 1024,
-            "total_samples": 131072
+            "total_samples": 131072,
+            "add_base_dir": false
         },
         "validation": {
-            "hf_sources": [
+            "sources": [
                 {
-                    "name": "HuggingFaceTB/dclm-edu",
+                    "name_or_path": "HuggingFaceTB/dclm-edu",
                     "split": "train",
                     "offset": 100000,
                     "chunk_size": 12000,
                     "dataset_weight": 0.75
                 },
                 {
-                    "name": "codeparrot/github-code",
+                    "name_or_path": "codeparrot/github-code",
                     "split": "train",
                     "trust_remote_code": true,
                     "offset": 100000,
@@ -73,7 +74,8 @@
             ],
             "seed": 1,
             "max_seq_length": 1024,
-            "total_samples": 20000
+            "total_samples": 20000,
+            "add_base_dir": false
         },
         "test": {
             "input_file": "sentence_512/validation_data/c4-validation.00000-of-00008.json.gz",
