@@ -48,9 +48,6 @@ class DenseAttention(nn.Module):
         if local == 'global':
             self.local = False
         if self.local:
-            if self.dilated:
-                raise ValueError("Dilated pattern is supported only for global"
-                                 " attention for now.")
             self.window_size = config.window_size
             assert config.max_position_embeddings % self.window_size == 0
             assert self.window_size % 2 == 0 and self.window_size > 0
@@ -105,14 +102,19 @@ class DenseAttention(nn.Module):
         if self.local:
             if self.local == "local":
                 self.forward = self.forward_local
+                self.dilated_inner_f = self.forward_local
             elif self.local == "shifted_local":
                 self.forward = self.forward_shifted_local
+                self.dilated_inner_f =  self.forward_shifted_local
             elif self.local == "sliding_window":
                 self.forward = self.forward_sliding_window
+                self.dilated_inner_f = self.forward_sliding_window
             elif self.local == "atomicsw":
                 self.forward = self.forward_sw_atomic_heads
+                self.dilated_inner_f = self.forward_sw_atomic_heads
             elif self.local == "softmax":
                 self.forward = self.forward_global
+                self.dilated_inner_f = self.forward_global
             else:
                 raise ValueError(
                     f"`local` argument should take one of these values: "
@@ -129,17 +131,20 @@ class DenseAttention(nn.Module):
                 )
                 self.attention_complexity = "auto"
                 self.attention_kernel = self._full_auto_attn
-        # 2. Option for global dilated attention (can be both causal and full).
-        elif self.dilated:
-            self.forward = self.forward_dilated
-        # 3. Option for global causal attention via efficient O(N) chunk-wise
+        # 2. Option for global causal attention via efficient O(N) chunk-wise
         # parallel algorithm.
         elif self.causal:
             self.forward = self.forward_causal
-        # 4. Option for global full attention. Also serves as a fallback option
+            self.dilated_inner_f = self.forward_causal
+        # 3. Option for global full attention. Also serves as a fallback option
         # for global O(N^2) causal attention.
         else:
             self.forward = self.forward_global
+            self.dilated_inner_f = self.forward_global
+
+        # Option for dilated attention on top of any attention variation.
+        if self.dilated:
+            self.forward = self.forward_dilated
 
         # If the layer is local or shifted local, RelPE can be applied locally,
         # in all other cases globally, using all sequence's indices.
@@ -484,7 +489,7 @@ class DenseAttention(nn.Module):
         # swap window and num_windows dims for dilated attention, then merge
         # them batch and window dims into one.
         hidden_states = hidden_states.transpose(-2, -3).reshape(bs * self.dilation_size, num_windows, dim)
-        hidden_states = self.forward_causal(hidden_states, rope_cache)
+        hidden_states = self.dilated_inner_f(hidden_states, rope_cache)
         hidden_states = hidden_states.view(bs, self.dilation_size, -1, dim)
         hidden_states = hidden_states.transpose(-2, -3).reshape(bs, seq_len, dim)
         return hidden_states
