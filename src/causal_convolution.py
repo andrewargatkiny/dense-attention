@@ -56,7 +56,7 @@ class CausalConv1d(nn.Module):
                 torch.zeros(size=(self.kernel_size, self.in_channels))
             )
             nn.init.uniform_(self.weight, -0.5, 0.5)
-        elif kernel_size == 8:
+        elif kernel_size <= 8:
             self.forward = self._size_k_forward
             bound = 1 / math.sqrt(self.kernel_size)
             self.weight = nn.Parameter(
@@ -80,7 +80,7 @@ class CausalConv1d(nn.Module):
         x = x.transpose(-2, -1)
         conv1d_out = self.conv1d(x).transpose(-2, -1)
         # remove k-1 values from the end:
-        return conv1d_out[:, 0:-(self.kernel_size - 1), :]
+        return conv1d_out[:, 0:-(self.kernel_size - 1), :]  + x
 
     def _size_4_forward(self, hidden_states):
         # hidden_states: Batch, SeqLen, EmbedDim
@@ -100,7 +100,7 @@ class CausalConv1d(nn.Module):
         states = self.weight * states
         states = states.sum(dim=-2)
         # states: Batch, SubSeq, Shift (4), EmbedDim
-        return states.reshape(bs, -1, dim)[..., :seq_len, :]
+        return states.reshape(bs, -1, dim)[..., :seq_len, :]  + hidden_states
 
     def _size_k_forward(self, hidden_states):
         # hidden_states: Batch, SeqLen, EmbedDim
@@ -122,4 +122,4 @@ class CausalConv1d(nn.Module):
         states = self.weight * states
         states = states.sum(dim=-2)
         # states: Batch, SubSeq, Shift (k), EmbedDim
-        return states.reshape(bs, -1, dim)[..., :seq_len, :]
+        return states.reshape(bs, -1, dim)[..., :seq_len, :]  + hidden_states

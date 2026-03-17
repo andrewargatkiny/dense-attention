@@ -7,7 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.attention.flex_attention import create_block_mask, flex_attention
 
-from src.causal_convolution import SlidingFixedConvolution, CausalConv1d
+from src.causal_convolution import CausalConv1d
 from src.model_config import ModelConfig
 from src.positional_embeddings import RelPEBase
 
