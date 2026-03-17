@@ -196,6 +196,12 @@ def get_argument_parser():
         help='Vector norm of parameters (weights) to be logged. Valid options are: L1, L2, Linf'
     )
     parser.add_argument(
+        '--log_grad_norm',
+        action='store_true',
+        help='Log gradient norm (L2, all parameters are represented as single '
+             'vector).'
+    )
+    parser.add_argument(
         '--data_path_prefix',
         type=str,
         default="",

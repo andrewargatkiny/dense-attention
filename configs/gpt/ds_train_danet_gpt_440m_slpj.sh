@@ -81,6 +81,7 @@ NCCL_TREE_THRESHOLD=0 deepspeed --master_port "$MASTER_PORT" ${base_dir}/deepspe
 --no_decay_embeddings \
 --eval_test_data \
 --log_weight_norms \
+--log_grad_norm \
 --log_diagnostic_freq 5 \
 --ckpt_to_save 1 \
 --keep_last_ckpts 1 \

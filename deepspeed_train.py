@@ -558,6 +558,14 @@ def report_model_weights(args, model, step, bins=20):
                     value=norm,
                     iteration=step
                 )
+            if args.log_grad_norm:
+                norm = model.get_global_grad_norm()
+                args.tracker_logger.report_scalar(
+                    title=f':Global Gradient Norm',
+                    series="grad norm",
+                    value=norm,
+                    iteration=step
+                )
             values = p.numpy()
             if args.tracking_system == "tensorboard":
                 hist, bounds = values, bins
