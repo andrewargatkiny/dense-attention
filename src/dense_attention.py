@@ -66,8 +66,13 @@ class DenseAttention(nn.Module):
         # Initialization
         std = config.initializer_range
         num_layers = config.num_hidden_layers
+        init_denom = 2.0
+        if config.init_q_div_sqrt_num_l:
+            init_denom *= num_layers
+        if config.init_q_div_sqrt_hs:
+            init_denom *= self.hidden_size
         torch.nn.init.normal_(self.queries, mean=0,
-                              std=std / math.sqrt(2.0 * num_layers * self.hidden_size))
+                              std=std / math.sqrt(init_denom))
         # Runtime complexity selection (for full bidirectional attention only).
         self.attention_complexity = config.attention_complexity
         if self.attention_complexity not in ['linear', 'quadratic', 'auto']:
