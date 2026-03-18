@@ -559,7 +559,7 @@ def report_model_weights(args, model, step, bins=20):
                     iteration=step
                 )
             if args.log_grad_norm:
-                norm = model.get_global_grad_norm()
+                norm = model.get_global_grad_norm() or 0
                 args.tracker_logger.report_scalar(
                     title=f':Global Gradient Norm',
                     series="grad norm",
