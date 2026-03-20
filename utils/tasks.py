@@ -6,6 +6,7 @@ from src.other_models import (TransformerForPreTraining,
                               TransformerForRegression, TransformerConfig)
 from src.modeling import DANetForPreTraining, BertForSequenceClassification, BertForAANMatching, \
     BertForRegression
+from src.modeling import BertForSequenceClassificationDistill
 from src.other_models.hf_modeling import HFForAANMatching, HFForPreTraining, HFForRegression, HFForSequenceClassification
 from src.other_models.bert_hf import BertHFForSequenceClassification
 from data.dataset import (LRADataset, LRATextDataset,
@@ -22,6 +23,14 @@ class SequenceClassification:
     having same length."""
     dataset_type = LRADataset
     model_type = BertForSequenceClassification
+    eval_func = eval_classification_task
+    
+@dataclass
+class SequenceClassificationDistill:
+    """Task for knowledge distillation sequence classifiction which treats all sequences 
+    as having the same length"""
+    dataset_type = LRADataset
+    model_type = BertForSequenceClassificationDistill
     eval_func = eval_classification_task
 
 @dataclass
@@ -309,6 +318,7 @@ class TaskRegistry:
 
 
 TaskRegistry.register_task("sequence_classification", SequenceClassification)
+TaskRegistry.register_task("sequence_classification_distill", SequenceClassificationDistill)
 TaskRegistry.register_task("text_classification", TextClassification)
 TaskRegistry.register_task("texts_matching", TextsMatching)
 TaskRegistry.register_task("sequence_classification_mlm", SequenceClassificationMLM)
