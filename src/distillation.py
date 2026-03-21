@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn import CrossEntropyLoss
-from modeling import DANetModel, DANetPreTrainedModel
+from src.modeling import DANetModel, DANetPreTrainedModel
 
 class BertForSequenceClassificationDistill(DANetPreTrainedModel):
     """BERT model for classification distillation from Sanh et. al. 2020.
