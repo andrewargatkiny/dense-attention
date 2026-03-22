@@ -43,12 +43,12 @@
         "lr_scheduler_params": {
             "warmup_ratio": 0.1,
             "warmup_degree": 1,
-            "degree": 1,
-            "one_cycle_steps": 45000
+            "degree": 0,
+            "one_cycle_steps": 75000
         },
         "lr_schedule": "cosine",
         "lr_offset": 0.0,
-        "learning_rate": 5e-4,
+        "learning_rate": 1e-3,
         "weight_decay": 0.1,
         "num_workers": 4,
         "async_worker": true

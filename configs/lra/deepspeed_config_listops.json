@@ -21,14 +21,14 @@
   "wall_clock_breakdown": false,
 
   "fp16": {
-    "enabled": true,
+    "enabled": false,
     "loss_scale": 0.0,
     "initial_scale_power": 16,
     "loss_scale_window": 20
 
   },
   "bf16": {
-    "enabled": false
+    "enabled": true
   },
    "amp": {
     "enabled": false,
