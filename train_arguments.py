@@ -390,7 +390,59 @@ def get_argument_parser():
              '"cf.key=val" or "ds.key=val" to override nested values in the model (cf) '
              'or deepspeed (ds) configs. For nested keys, use dot notation: '
              'key = key1.key2.key3.'
-        
+
+    )
+
+    # Knowledge distillation arguments
+    parser.add_argument(
+        '--teacher_checkpoint',
+        type=str,
+        default=None,
+        help='Path to the teacher model checkpoint directory for knowledge '
+             'distillation. If set, enables distillation mode.'
+    )
+    parser.add_argument(
+        '--teacher_checkpoint_id',
+        type=str,
+        default=None,
+        help='Checkpoint identifier (e.g. epoch5_step1000) to load from '
+             'the teacher checkpoint path.'
+    )
+    parser.add_argument(
+        '--teacher_config_file',
+        type=str,
+        default=None,
+        help='Path to teacher model config JSON file. Required when teacher '
+             'and student have different architectures.'
+    )
+    parser.add_argument(
+        '--distill_alpha',
+        type=float,
+        default=0.6,
+        help='Weight for the cross-entropy loss with ground truth labels '
+             'in distillation. Default: 0.6.'
+    )
+    parser.add_argument(
+        '--distill_beta',
+        type=float,
+        default=0.4,
+        help='Weight for the KL divergence distillation loss between '
+             'student and teacher soft targets. Default: 0.4.'
+    )
+    parser.add_argument(
+        '--distill_gamma',
+        type=float,
+        default=0.0,
+        help='Weight for the cosine embedding loss between student and '
+             'teacher hidden states. Default: 0.0 (disabled).'
+    )
+    parser.add_argument(
+        '--distill_T',
+        type=float,
+        default=5.0,
+        help='Temperature for softening probability distributions in '
+             'distillation. Higher values produce softer distributions. '
+             'Default: 5.0.'
     )
 
     return parser

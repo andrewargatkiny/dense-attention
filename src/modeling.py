@@ -27,6 +27,9 @@ from collections import OrderedDict
 import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss
+from torch.nn import CosineEmbeddingLoss
+from torch.nn import KLDivLoss
+import torch.nn.functional as F
 
 from src.activations import Activation2Class
 from src.model_config import ModelConfig
@@ -1482,3 +1485,4 @@ class BertForQuestionAnswering(DANetPreTrainedModel):
             return total_loss
         else:
             return start_logits, end_logits
+        

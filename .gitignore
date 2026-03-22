@@ -15,5 +15,13 @@ venv/
 # Log files
 *.log
 
+# Checkpoints
+teacher_checkpoint/
+
+# Training outputs
+test_output/
+test_data/
+bert_model_dense_attn_adam_outputs/
+
 # Misc
-.swp
+*.swp

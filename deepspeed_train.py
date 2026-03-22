@@ -3,6 +3,7 @@ import sys
 import time
 import logging
 import shutil
+import glob
 from operator import attrgetter
 
 import numpy as np
@@ -190,6 +191,32 @@ def train(args,
             step_start = time.time()
             #batch = pretrain_dataset_provider.get_batch(batch_index)
             batch = {name: t.to(args.device) for name, t in batch.items()}  # Move to GPU
+            # Get teacher predictions for knowledge distillation
+            if args.teacher_model is not None:
+                with torch.no_grad():
+                    teacher = args.teacher_model
+                    dtype = teacher.bert.embeddings.word_embeddings.weight.dtype
+                    attn_mask = batch.get('attention_mask',
+                                          torch.ones_like(batch['input_ids']))
+                    ext_mask = (
+                        attn_mask /
+                        attn_mask.sum(axis=-1, keepdim=True).pow(1./3)
+                    ).to(dtype).unsqueeze(-1)
+                    if teacher.use_local_attention:
+                        local_mask = (
+                            attn_mask / teacher.window_size ** (1./3)
+                        ).to(dtype).unsqueeze(-1)
+                        ext_mask = (local_mask, ext_mask)
+                    teacher_hidden, pooled = teacher.bert(
+                        batch['input_ids'],
+                        batch.get('token_type_ids', None),
+                        attention_mask=ext_mask,
+                        output_all_encoded_layers=False)
+                    teacher_logits = teacher.classifier(
+                        teacher.dropout(pooled))
+                    batch['teacher_logits'] = teacher_logits.detach()
+                    if args.distill_gamma > 0:
+                        batch['teacher_hidden'] = teacher_hidden.detach()
             # Calculate forward pass
             loss = model(**batch)
 
@@ -596,8 +623,7 @@ def get_arguments():
 
     args = parser.parse_args()
 
-    # no cuda mode is not supported
-    args.no_cuda = False
+    args.no_cuda = not torch.cuda.is_available()
 
     return args
 
@@ -642,7 +668,8 @@ def construct_arguments():
     random.seed(args.seed)
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
-    torch.cuda.manual_seed_all(args.seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(args.seed)
 
     os.makedirs(args.output_dir, exist_ok=True)
     args.saved_model_path = os.path.join(args.output_dir, "saved_models/",
@@ -732,11 +759,46 @@ def prepare_optimizer_parameters(args, model):
 
     return optimizer_grouped_parameters
 
+def prepare_teacher_model(args, config_class, model_class):
+    if hasattr(args, 'teacher_config_file') and args.teacher_config_file is not None:
+        teacher_config_dict = json.load(
+            open(args.teacher_config_file, 'r', encoding='utf-8')
+        )
+        teacher_bert_config = config_class(**teacher_config_dict["model_config"])
+    else:
+        teacher_bert_config = config_class(**args.config["model_config"])
+    
+    # Padding for divisibility by 8
+    if teacher_bert_config.vocab_size % 8 != 0:
+        teacher_bert_config.vocab_size += 8 - (teacher_bert_config.vocab_size % 8)
+        
+    teacher = model_class(teacher_bert_config, args)
+    
+    if not hasattr(args, "teacher_checkpoint"):
+        raise Exception("teacher_checkpoint should be specified in args")
+    if not hasattr(args, "teacher_checkpoint_id"):
+        raise Exception("teacher_checkpoint_id should be specified in args")
+    
+    checkpoint_path = os.path.join(args.teacher_checkpoint, args.teacher_checkpoint_id)
+    model_file = glob.glob(os.path.join(checkpoint_path, "*model_states.pt"))[0]
+    state_dict = torch.load(model_file, map_location=args.device) 
+    teacher.load_state_dict(state_dict["module"], strict=False)
+    
+    teacher.eval()
+    for param in teacher.parameters():
+        param.requires_grad = False
+        
+    teacher.to(args.device)
+    args.teacher_model = teacher
+    args.teacher_hidden_size = teacher_bert_config.hidden_size
+    print(f"Teacher model loaded from {checkpoint_path}")
+    
+    return True
 
 def prepare_model_optimizer(args):
     # Initialize torch distributed
     deepspeed.init_distributed(dist_backend=args.dict_backend)
-    args.local_rank = int(os.environ['LOCAL_RANK'])
+    args.local_rank = int(os.environ.get('LOCAL_RANK', '0'))
     model_class = args.task.model_type
     config_class = ModelConfig
     if hasattr(args.task, "config_type"):
@@ -748,6 +810,12 @@ def prepare_model_optimizer(args):
     if bert_config.vocab_size % 8 != 0:
         bert_config.vocab_size += 8 - (bert_config.vocab_size % 8)
     print("VOCAB SIZE:", bert_config.vocab_size)
+
+    # Pre-compute teacher hidden size so the student can create projection layer
+    if hasattr(args, "teacher_config_file") and args.teacher_config_file is not None:
+        teacher_config_dict = json.load(
+            open(args.teacher_config_file, 'r', encoding='utf-8'))
+        args.teacher_hidden_size = teacher_config_dict["model_config"]["hidden_size"]
 
     model = model_class(bert_config, args)
 
@@ -780,6 +848,10 @@ def prepare_model_optimizer(args):
                      or model.optimizer_name() ==
                      deepspeed.runtime.config.ONEBIT_LAMB_OPTIMIZER)
 
+    if hasattr(args, "teacher_checkpoint") and args.teacher_checkpoint is not None:
+        prepare_teacher_model(args, config_class, model_class)
+    else:
+        args.teacher_model = None
     if args.use_torch_compile:
         torch.compiler.reset()
         model = torch.compile(model)
