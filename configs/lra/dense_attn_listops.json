@@ -2,10 +2,10 @@
     "name": "lra-experiment",
     "model_config": {
         "vocab_size_or_config_json_file": 32,
-        "hidden_size": 512,
+        "hidden_size": 256,
         "num_hidden_layers": 9,
-        "num_attention_heads": 8,
-        "intermediate_size": 2,
+        "num_attention_heads": 4,
+        "intermediate_size": 1024,
         "hidden_act": "gelu",
         "hidden_dropout_prob": 0.1,
         "attention_probs_dropout_prob": 0.05,

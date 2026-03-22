@@ -202,6 +202,11 @@ def train(args,
                         attn_mask /
                         attn_mask.sum(axis=-1, keepdim=True).pow(1./3)
                     ).to(dtype).unsqueeze(-1)
+                    if teacher.use_local_attention:
+                        local_mask = (
+                            attn_mask / teacher.window_size ** (1./3)
+                        ).to(dtype).unsqueeze(-1)
+                        ext_mask = (local_mask, ext_mask)
                     teacher_hidden, pooled = teacher.bert(
                         batch['input_ids'],
                         batch.get('token_type_ids', None),
