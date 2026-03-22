@@ -623,8 +623,7 @@ def get_arguments():
 
     args = parser.parse_args()
 
-    # no cuda mode is not supported
-    args.no_cuda = False
+    args.no_cuda = not torch.cuda.is_available()
 
     return args
 
@@ -669,7 +668,8 @@ def construct_arguments():
     random.seed(args.seed)
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
-    torch.cuda.manual_seed_all(args.seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(args.seed)
 
     os.makedirs(args.output_dir, exist_ok=True)
     args.saved_model_path = os.path.join(args.output_dir, "saved_models/",
@@ -798,7 +798,7 @@ def prepare_teacher_model(args, config_class, model_class):
 def prepare_model_optimizer(args):
     # Initialize torch distributed
     deepspeed.init_distributed(dist_backend=args.dict_backend)
-    args.local_rank = int(os.environ['LOCAL_RANK'])
+    args.local_rank = int(os.environ.get('LOCAL_RANK', '0'))
     model_class = args.task.model_type
     config_class = ModelConfig
     if hasattr(args.task, "config_type"):

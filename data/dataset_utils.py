@@ -9,6 +9,7 @@ from typing import List, Optional
 import datasets
 import huggingface_hub
 import numpy as np
+import torch
 from torch import distributed as dist
 from torch.utils.data import DataLoader, RandomSampler
 
@@ -30,7 +31,7 @@ def create_dataloader(train_data, num_workers,
                                   batch_size=train_batch_size,
                                   num_workers=num_workers,
                                   worker_init_fn=worker_init,
-                                  pin_memory=True)
+                                  pin_memory=torch.cuda.is_available())
     return train_dataloader, len(train_data)
 
 
