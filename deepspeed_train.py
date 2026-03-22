@@ -811,6 +811,12 @@ def prepare_model_optimizer(args):
         bert_config.vocab_size += 8 - (bert_config.vocab_size % 8)
     print("VOCAB SIZE:", bert_config.vocab_size)
 
+    # Pre-compute teacher hidden size so the student can create projection layer
+    if hasattr(args, "teacher_config_file") and args.teacher_config_file is not None:
+        teacher_config_dict = json.load(
+            open(args.teacher_config_file, 'r', encoding='utf-8'))
+        args.teacher_hidden_size = teacher_config_dict["model_config"]["hidden_size"]
+
     model = model_class(bert_config, args)
 
     # Optimizer parameters
