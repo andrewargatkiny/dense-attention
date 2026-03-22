@@ -39,7 +39,7 @@
         }
     },
     "training": {
-        "num_epochs": 60,
+        "num_epochs": 20,
         "lr_scheduler_params": {
             "warmup_ratio": 0.1,
             "warmup_degree": 1,
