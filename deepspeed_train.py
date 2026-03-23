@@ -176,7 +176,9 @@ def train(args,
     rounds = args.throughput_logging_freq
     step_counts = 0
     lr_this_step = config["training"]["learning_rate"]
-    inner_optimizer = optimizer if not args.bf16 else optimizer.optimizer
+    #inner_optimizer = optimizer if not args.bf16 else optimizer.optimizer
+    inner_optimizer = optimizer.optimizer if hasattr(optimizer, "optimizer") else optimizer
+
     if args.dense_attention:
         num_layers = args.config["model_config"]["num_hidden_layers"]
         update_weights_scalers(model, num_layers)
@@ -240,9 +242,9 @@ def train(args,
                     for name, param in model.named_parameters():
                         if param.grad is not None: print(f"Grad Extremums", name, param.grad.min(), param.grad.max())
                     for tensor, state in inner_optimizer.state.items():
-                        print("step", inner_optimizer.state[tensor]['step'])
-                        print("exp_avg", inner_optimizer.state[tensor]['exp_avg'])
-                        print("exp_avg_sq", inner_optimizer.state[tensor]['exp_avg_sq'])
+                        print("step", inner_optimizer.state[tensor].get('step'))
+                        print("exp_avg", inner_optimizer.state[tensor].get('exp_avg'))
+                        print("exp_avg_sq", inner_optimizer.state[tensor].get('exp_avg_sq'))
                     logger.info(
                         f"Logging model weights and activations distribution "
                         f"at the start of of epoch: {index}, step: {epoch_step}")
