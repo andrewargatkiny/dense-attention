@@ -16,6 +16,8 @@ from data.dataset_lm import BertPretrainingDatasetFactory, GPTPretrainingDataset
 from train_utils import eval_classification_task, eval_mlm_classification_task, eval_glue_tasks, eval_regression_task
 from src.other_models.hf_modeling import HFConfig
 
+from utils.distillation_tasks import DistillationMLMTask
+
 @dataclass
 class SequenceClassification:
     """Task for basic sequence classification which treats all sequences as
@@ -343,3 +345,4 @@ TaskRegistry.register_task("hf_sequence_classification_mlm", HFSequenceClassific
 TaskRegistry.register_task("hf_text_classification_mlm", HFTextClassificationMLM)
 TaskRegistry.register_task("hf_aan_text_classification_mlm", HFAANTextClassificationMLM)
 TaskRegistry.register_task("hf_bert_mlm", HFBertMLM)
+TaskRegistry.register_task("mlm_distillation", DistillationMLMTask())
