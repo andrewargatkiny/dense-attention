@@ -3,10 +3,10 @@
 
   "model_config": {
     "vocab_size": 30522,
-    "hidden_size": 6,
-    "num_hidden_layers": 256,
-    "num_attention_heads": 2,
-    "intermediate_size": 128,
+    "hidden_size": 128,
+    "num_hidden_layers": 4,
+    "num_attention_heads": 4,
+    "intermediate_size": 256,
     "hidden_act": "hardtanh",
     "hidden_dropout_prob": 0.0,
     "attention_probs_dropout_prob": 0.0,
@@ -34,15 +34,15 @@
 
   "data": {
     "training": {
-      "num_samples": 10000,
-      "seq_length": 64,
+      "num_samples": 512,
+      "seq_length": 32,
       "mask_prob": 0.15,
       "split": "train",
       "tokenizer": "bert-base-uncased"
     },
     "validation": {
-      "num_samples": 1000,
-      "seq_length": 64,
+      "num_samples": 128,
+      "seq_length": 32,
       "mask_prob": 0.15,
       "split": "validation",
       "tokenizer": "bert-base-uncased"
@@ -51,7 +51,7 @@
 
   "training": {
     "num_epochs": 10,
-    "learning_rate": 1e-3,
+    "learning_rate": 3e-4,
     "lr_schedule": "constant",
     "lr_offset": 0.0,
     "weight_decay": 0.01,
