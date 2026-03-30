@@ -1,5 +1,3 @@
-from __future__ import absolute_import, division, print_function
-
 import logging
 import random
 
@@ -7,7 +5,6 @@ import torch
 from torch.utils.data import Dataset
 
 logger = logging.getLogger(__name__)
-
 
 class WikiMLMDataset(Dataset):
     """Turn raw Wikipedia text into tensors the model can train on"""

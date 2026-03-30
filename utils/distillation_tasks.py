@@ -3,8 +3,6 @@
 # This module is meant to be imported from utils/tasks.py and its tasks
 # registered with TaskRegistry.
 
-from __future__ import absolute_import, division, print_function
-
 import logging
 import math
 

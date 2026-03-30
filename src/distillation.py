@@ -6,8 +6,6 @@
 # where kd_loss is the KL-divergence between teacher and student soft-label
 # distributions on masked positions (for MLM), scaled by temperature^2.
 
-from __future__ import absolute_import, division, print_function, unicode_literals
-
 import logging
 from operator import attrgetter
 from typing import Optional
