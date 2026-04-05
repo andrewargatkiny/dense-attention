@@ -31,7 +31,7 @@
         "causal": true,
         "chunk_size": 512,
         "local_attention": true,
-        "local_scheme": "sw_dsw_g",
+        "local_scheme": "sw_sw_g",
         "use_short_conv": true,
         "dilation_size": 4,
         "window_size": 32
