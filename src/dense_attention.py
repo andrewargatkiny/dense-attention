@@ -16,7 +16,7 @@ class DenseAttention(nn.Module):
     """Efficient implementation of DenseAttention module"""
 
     def __init__(self, config: ModelConfig, local=False,
-                 inference=False, layer_number=0, dilated=False, use_short_conv=False):
+                 inference=False, layer_number=0, dilated=False):
         super().__init__()
         self.n_heads = config.num_attention_heads
         if local == "softmax" and not config.hybrid: raise NotImplementedError(
@@ -211,8 +211,8 @@ class DenseAttention(nn.Module):
                                  f"{self.local} was provided instead.")
             self.forward = self.forward_inference
 
-        self.use_short_conv = use_short_conv
-        if use_short_conv:
+        self.use_short_conv = config.use_short_conv
+        if self.use_short_conv:
             self.q_conv = CausalConv1d(config)
             self.k_conv = CausalConv1d(config)
             self.v_conv = CausalConv1d(config)

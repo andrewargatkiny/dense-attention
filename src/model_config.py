@@ -50,6 +50,7 @@ class ModelConfig(object):
                  local_attention=False,
                  window_size=1024,
                  dilation_size=8,
+                 use_short_conv=False,
                  conv_kernel_size=4,
                  local_relpe=True,
                  local_scheme="l_sl_g",
@@ -147,6 +148,7 @@ class ModelConfig(object):
                 layers. Default: 1024.
             dilation_size: lengh of dilation window in dilated attention
                 layers. Default: 8.
+            use_short_conv: Whether to apply short convolution to Q, K, and V.
             conv_kernel_size: kernel size in short convolution layers if they
                 are used. Default: 4.
             local_relpe: Applicable only for `local` and `shifted_local` types
@@ -214,6 +216,7 @@ class ModelConfig(object):
             self.local_attention = local_attention
             self.window_size = window_size
             self.dilation_size = dilation_size
+            self.use_short_conv = use_short_conv
             self.conv_kernel_size = conv_kernel_size
             self.local_relpe = local_relpe
             self.local_scheme = local_scheme

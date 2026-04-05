@@ -69,7 +69,7 @@ class DANetLayerWithLocalAttention(nn.Module):
 
         self.attention = DenseAttention(
             config, local=locality_name, layer_number=layer_number,
-            use_short_conv=True, dilated=dilated
+            dilated=dilated
         )
         self.ffn = SwiGLU(config) if config.swiglu_ffn else ExpandedFFN(config)
         self.ffn_activation = Activation2Class[config.post_attn_ln_type](config.hidden_size)
