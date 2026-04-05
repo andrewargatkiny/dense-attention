@@ -1,0 +1,43 @@
+{
+    "data": {
+        "training": {
+            "hf_sources": [
+                {
+                    "name": "/home/aargatkin/data/slimpajama/train",
+                    "chunk_size": 600000
+                }
+            ],
+            "total_samples": 131072,
+            "max_seq_length": 4096,
+            "tokenizer_name": "openai-community/gpt2",
+            "pad_samples": false
+        },
+        "validation": {
+            "hf_sources": [
+                {
+                    "name": "/home/aargatkin/data/pg19/test",
+                    "offset": 0,
+                    "split": "test",
+                    "chunk_size": 100
+                }
+            ],
+            "total_samples": 2048,
+            "max_seq_length": 4096,
+            "tokenizer_name": "openai-community/gpt2",
+            "pad_samples": false
+        },
+        "test": {
+            "hf_sources": [
+                {
+                    "name": "/home/aargatkin/data/slimpajama/val",
+                    "split": "validation",
+                    "chunk_size": 75000
+                }
+            ],
+            "total_samples": 4096,
+            "max_seq_length": 4096,
+            "tokenizer_name": "openai-community/gpt2",
+            "pad_samples": false
+        }
+    }
+}
