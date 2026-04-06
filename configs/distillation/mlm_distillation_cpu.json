@@ -1,0 +1,60 @@
+{
+  "name": "mlm_distillation_bert_teacher",
+
+  "model_config": {
+    "vocab_size": 30522,
+    "hidden_size": 128,
+    "num_hidden_layers": 4,
+    "num_attention_heads": 4,
+    "intermediate_size": 256,
+    "hidden_act": "hardtanh",
+    "hidden_dropout_prob": 0.0,
+    "attention_probs_dropout_prob": 0.0,
+    "max_position_embeddings": 128,
+    "type_vocab_size": 2,
+    "initializer_range": 0.02,
+    "pos_emb_type": "learned",
+    "local_attention": false,
+    "window_size": 16,
+    "embedding_ln_type": "hardtanh",
+    "lm_head_act": "hardtanh",
+    "lm_head_ln_type": null,
+    "pooler_function": "first",
+    "pooler_act": "hardtanh",
+    "pooler_no_dense": false,
+    "pooler_ln_type": null,
+    "classifier_bias": false,
+    "token_type_embeddings": true,
+    "final_ln_type": null,
+    "relpe_type": null,
+    "local_scheme": "global",
+    "hybrid": false,
+    "pad_token_id": 0
+  },
+
+  "data": {
+    "training": {
+      "num_samples": 512,
+      "seq_length": 32,
+      "mask_prob": 0.15,
+      "split": "train",
+      "tokenizer": "bert-base-uncased"
+    },
+    "validation": {
+      "num_samples": 128,
+      "seq_length": 32,
+      "mask_prob": 0.15,
+      "split": "validation",
+      "tokenizer": "bert-base-uncased"
+    }
+  },
+
+  "training": {
+    "num_epochs": 10,
+    "learning_rate": 3e-4,
+    "lr_schedule": "constant",
+    "lr_offset": 0.0,
+    "weight_decay": 0.01,
+    "num_workers": 0
+  }
+}

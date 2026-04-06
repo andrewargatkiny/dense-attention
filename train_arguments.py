@@ -399,6 +399,26 @@ def get_argument_parser():
         
     )
 
+    parser.add_argument(
+    "--teacher_model",
+    type=str,
+    default="self",
+    help="Teacher model source. 'self' = random copy of student (for testing). "
+         "Or a HuggingFace model ID like 'bert-base-uncased', or a local path.",
+)
+    parser.add_argument(
+        "--distillation_alpha",
+        type=float,
+        default=0.5,
+        help="Weight for the hard-label loss. 1.0 = no distillation, 0.0 = only KD.",
+    )
+    parser.add_argument(
+        "--distillation_temperature",
+        type=float,
+        default=2.0,
+        help="Temperature for soft labels. Higher = softer teacher distributions.",
+    )
+
     return parser
 
 
