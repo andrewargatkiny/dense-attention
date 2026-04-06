@@ -8,13 +8,13 @@ BASE_JOB_NAME="gpt_pretraining"
 SEED=${SEED:-42}
 #NODE=${NODE:-0}
 MASTER_PORT=${MASTER_PORT:-29500}
-CONFIG=${CONFIG:-${base_dir}/configs/gpt/gpt_360m_relpe_bf16.json}
-DS_CONFIG=${DS_CONFIG:-${base_dir}/configs/gpt/deepspeed_config_4k_bf16.json}
+CONFIG=${CONFIG:-${base_dir}/configs/gpt/llama_145m_slimpajama.json}
+DS_CONFIG=${DS_CONFIG:-${base_dir}/configs/gpt/deepspeed_transformer_2k.json}
 
 MODEL_CONFIG=${MODEL_CONFIG:-"$CONFIG"}
 DATA_CONFIG=${DATA_CONFIG:-"$CONFIG"}
 TRAINING_CONFIG=${TRAINING_CONFIG:-"$CONFIG"}
-TASK_TYPE=${TASK_TYPE:-"gpt_pretraining"}
+TASK_TYPE=${TASK_TYPE:-"transformer_gpt_pretraining"}
 TRACKING_SYSTEM=${TRACKING_SYSTEM:-clearml}
 
 JOB_NAME_SUFFIX=${JOB_NAME_SUFFIX-"_$(date +'%Y-%m-%d_%H-%M')"}
@@ -86,11 +86,11 @@ NCCL_TREE_THRESHOLD=0 deepspeed --master_port "$MASTER_PORT" ${base_dir}/deepspe
 --ckpt_to_save 1 \
 --keep_last_ckpts 1 \
 --keep_ckpt_every 14 \
---keep_ckpt_epochs "14,28,42,55,56" \
+--keep_ckpt_epochs "7,14,21,28,35,42,48" \
 --seed "$SEED" \
 --job_name $JOB_NAME \
 --deepspeed_config "$DS_CONFIG" \
---data_path_prefix "${BASE_DATA_DIR}/bert_mlm/" \
+--data_path_prefix "${BASE_DATA_DIR}" \
 --eval_bs_ratio 2 \
 --inputs_logging_ratio 0.1 \
 --load_training_checkpoint $CHECKPOINT_BASE_PATH \

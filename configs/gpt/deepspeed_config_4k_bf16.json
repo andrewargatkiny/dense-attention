@@ -17,7 +17,9 @@
       "adam_w_mode": true
     }
   },
-
+  "zero_optimization": {
+    "stage": 0
+  },
   "wall_clock_breakdown": false,
 
   "fp16": {

@@ -31,6 +31,8 @@ class ModelConfig(object):
                  embedding_ln_type="hardtanh",
                  type_vocab_size=2,
                  initializer_range=0.02,
+                 init_q_div_sqrt_hs=True,
+                 init_q_div_sqrt_num_l=True,
                  pos_emb_type="learned",
                  embedding_dropout=0,
                  relpe_type=None,
@@ -47,6 +49,9 @@ class ModelConfig(object):
                  chunk_size=1024,
                  local_attention=False,
                  window_size=1024,
+                 dilation_size=8,
+                 use_short_conv=False,
+                 conv_kernel_size=4,
                  local_relpe=True,
                  local_scheme="l_sl_g",
                  hybrid=False,
@@ -98,6 +103,12 @@ class ModelConfig(object):
                 possible types are defined in `PositionalEmbeddingsTypes` enum.
             initializer_range: A value used in the initializer functions as a
                 parameter to init distributions.
+            init_q_div_sqrt_hs: Boolean flag indicating whether to additionally
+                divide queries' `initializer_range` by sqrt of `hidden_size`.
+                Default: True`.
+            init_q_div_sqrt_num_l: Boolean flag indicating whether to
+                additionally divide queries' `initializer_range` by sqrt of
+                `num_hidden_layers`. Default: True`.
             embedding_dropout: Dropout ratio at the end of embeddings layer.
             relpe_type: In case the chosen type of positional embeddings is
                 RelPE, then determines which type of RelPEs to use. All
@@ -135,6 +146,11 @@ class ModelConfig(object):
                 attention layers scheme. Default: `False`.
             window_size: length of local attention span in local attention
                 layers. Default: 1024.
+            dilation_size: lengh of dilation window in dilated attention
+                layers. Default: 8.
+            use_short_conv: Whether to apply short convolution to Q, K, and V.
+            conv_kernel_size: kernel size in short convolution layers if they
+                are used. Default: 4.
             local_relpe: Applicable only for `local` and `shifted_local` types
                 of layer. For them, it indicates whether to apply RelPE using
                 local or global indices along sequence dimension. Default:
@@ -180,6 +196,8 @@ class ModelConfig(object):
             self.token_type_embeddings = token_type_embeddings
             self.type_vocab_size = type_vocab_size
             self.initializer_range = initializer_range
+            self.init_q_div_sqrt_hs = init_q_div_sqrt_hs
+            self.init_q_div_sqrt_num_l = init_q_div_sqrt_num_l
             self.pos_emb_type = PositionalEmbeddingsTypes[pos_emb_type.upper()]
             self.embedding_ln_type = embedding_ln_type
             self.embedding_dropout = embedding_dropout
@@ -197,6 +215,9 @@ class ModelConfig(object):
             self.chunk_size = chunk_size
             self.local_attention = local_attention
             self.window_size = window_size
+            self.dilation_size = dilation_size
+            self.use_short_conv = use_short_conv
+            self.conv_kernel_size = conv_kernel_size
             self.local_relpe = local_relpe
             self.local_scheme = local_scheme
             self.hybrid = hybrid

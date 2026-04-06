@@ -1,9 +1,9 @@
 {
     "name": "dense_attention_bert",
     "model_config": {
-        "vocab_size_or_config_json_file": 32000,
-        "hidden_size": 1024,
-        "num_hidden_layers": 32,
+        "vocab_size_or_config_json_file": 50304,
+        "hidden_size": 768,
+        "num_hidden_layers": 21,
         "num_attention_heads": 1,
         "intermediate_size": 4,
         "hidden_dropout_prob": 0,
@@ -33,6 +33,7 @@
         "local_attention": true,
         "local_scheme": "sw_sw_g",
         "use_short_conv": true,
+        "dilation_size": 4,
         "window_size": 32
 
     },
@@ -40,54 +41,54 @@
         "training": {
             "hf_sources": [
                 {
-                    "name": "fineweb-edu/sample/100BT",
+                    "name": "/home/aargatkin/data/slimpajama/train",
                     "chunk_size": 600000
                 }
             ],
-            "total_samples": 131072,
-            "max_seq_length": 4096,
-            "tokenizer_name": "huggyllama/llama-7b",
+            "total_samples": 262144,
+            "max_seq_length": 2048,
+            "tokenizer_name": "openai-community/gpt2",
             "pad_samples": false
         },
         "validation": {
             "hf_sources": [
                 {
-                    "name": "EleutherAI/wikitext_document_level",
-                    "subset": "wikitext-2-raw-v1",
-                    "split": "test",
+                    "name": "/home/aargatkin/data/pg19/test",
                     "offset": 0,
-                    "chunk_size": 62
+                    "split": "test",
+                    "chunk_size": 100
                 }
             ],
-            "total_samples": 81,
-            "max_seq_length": 4096,
-            "tokenizer_name": "huggyllama/llama-7b",
+            "total_samples": 4096,
+            "max_seq_length": 2048,
+            "tokenizer_name": "openai-community/gpt2",
             "pad_samples": false
         },
         "test": {
             "hf_sources": [
                 {
-                    "name": "fineweb-edu/sample/test/",
+                    "name": "/home/aargatkin/data/slimpajama/val",
+                    "split": "validation",
                     "chunk_size": 75000
                 }
             ],
-            "total_samples": 16384,
-            "max_seq_length": 4096,
-            "tokenizer_name": "huggyllama/llama-7b",
+            "total_samples": 8192,
+            "max_seq_length": 2048,
+            "tokenizer_name": "openai-community/gpt2",
             "pad_samples": false
         }
     },
     "training": {
-        "num_epochs": 56,
+        "num_epochs": 100,
         "lr_scheduler_params": {
             "warmup_ratio": 0.015,
-            "max_lr": 4e-4,
-            "min_lr": 0.00005,
-            "one_cycle_steps": 114688
+            "max_lr": 1e-3,
+            "min_lr": 1e-4,
+            "one_cycle_steps": 200000
         },
         "lr_schedule": "true_cosine",
         "lr_offset": 0,
-        "learning_rate": 4e-4,
+        "learning_rate": 1e-3,
         "weight_decay": 0.1,
         "num_workers": 4
     }

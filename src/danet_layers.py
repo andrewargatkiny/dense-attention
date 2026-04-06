@@ -37,7 +37,8 @@ class DANetLayerWithLocalAttention(nn.Module):
     Functions identically to `DANetLayer` for global attention."""
     code_to_layer = {
         'g': 'global', 'l': 'local', 'sl': 'shifted_local',
-        'sw': 'sliding_window', 'softmax': 'softmax'
+        'sw': 'sliding_window', 'softmax': 'softmax', 'dg': 'global',
+        'dsw': 'sliding_window'
     }
     def __init__(self, config: ModelConfig, layer_number: int=0):
         super(DANetLayerWithLocalAttention, self).__init__()
@@ -58,9 +59,17 @@ class DANetLayerWithLocalAttention(nn.Module):
         else:
             # Local mask: each token gets multiplied by window_size ** -1/3 or 0.
             self.prepare_mask_fn = lambda x: x[0]  # local mask
+
+        if code == "dg" or code == "dsw":
+            #scale = config.dilation_size ** (1/3)
+            #self.prepare_mask_fn = lambda x: x[1] * scale # global mask
+            dilated = True
+        else:
+            dilated = False
+
         self.attention = DenseAttention(
-            config, local=locality_name,
-            layer_number=layer_number
+            config, local=locality_name, layer_number=layer_number,
+            dilated=dilated
         )
         self.ffn = SwiGLU(config) if config.swiglu_ffn else ExpandedFFN(config)
         self.ffn_activation = Activation2Class[config.post_attn_ln_type](config.hidden_size)

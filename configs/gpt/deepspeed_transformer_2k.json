@@ -1,6 +1,6 @@
 {
   "train_batch_size": 256,
-  "train_micro_batch_size_per_gpu": 16,
+  "train_micro_batch_size_per_gpu": 32,
   "steps_per_print": 100,
   "prescale_gradients": false,
   "optimizer": {
@@ -9,7 +9,7 @@
       "lr": 4e-4,
       "betas": [
         0.9,
-        0.9
+        0.95
       ],
       "eps": 1e-16,
       "weight_decay": 0.01,
@@ -17,7 +17,9 @@
       "adam_w_mode": true
     }
   },
-
+  "zero_optimization": {
+    "stage": 0
+  },
   "wall_clock_breakdown": false,
 
   "fp16": {
