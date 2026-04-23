@@ -1,0 +1,65 @@
+{
+    "name": "lra-experiment",
+    "model_config": {
+        "vocab_size_or_config_json_file": 264,
+        "d_model": 256,
+        "d_state": 64,
+        "gate_act": "id",
+        "num_hidden_layers": 6,
+        "channels": 1,
+        "bidirectional": false,
+        "activation": "gelu",
+        "final_act": "glu",
+        "dropout": 0.0,
+        "weight_norm": false,
+        "tie_dropout": true,
+        "mode": "nplr",
+        "measure": "legs",
+        "rank": 1,
+        "dt_min": 0.001,
+        "dt_max": 0.1,
+        "real_type": "softplus",
+        "lr": {
+          "dt": 0.001,
+          "A": 0.001,
+          "B": 0.001
+        },
+        "n_ssm": 1,
+        "deterministic": false,
+        "transposed": false,
+        "verbose": true
+    },
+    "data": {
+        "training": {
+            "inputs": "input/train.src",
+            "labels": "label/train.label"
+        },
+        "validation": {
+            "inputs": "input/valid.src",
+            "labels": "label/valid.label"
+        },
+        "test": {
+            "inputs": "input/test.src",
+            "labels": "label/test.label"
+        }
+    },
+    "training": {
+        "num_epochs": 210,
+        "lr_scheduler_params": {
+            "warmup_ratio": 0.1,
+            "warmup_degree": 1,
+            "degree": 0,
+            "one_cycle_steps": 320000
+        },
+        "lr_schedule": "cosine",
+        "lr_offset": 0.0,
+        "warmup_proportion": 0.02,
+        "learning_rate": 1e-3,
+        "weight_decay": 0.1,
+        "num_workers": 4,
+        "async_worker": true,
+        "decay_rate": 0.90,
+        "decay_step": 150,
+        "one_cycle_steps": 125000
+    }
+}

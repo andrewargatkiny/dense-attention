@@ -6,6 +6,8 @@ from src.other_models import (TransformerForPreTraining,
                               TransformerForRegression, TransformerConfig)
 from src.modeling import DANetForPreTraining, BertForSequenceClassification, BertForAANMatching, \
     BertForRegression
+
+from src.other_models.modeling_s4 import S4ForPreTraining, S4ForSequenceClassification, S4Config
 from src.other_models.hf_modeling import HFForAANMatching, HFForPreTraining, HFForRegression, HFForSequenceClassification
 from src.other_models.bert_hf import BertHFForSequenceClassification
 from data.dataset import (LRADataset, LRATextDataset,
@@ -23,6 +25,15 @@ class SequenceClassification:
     dataset_type = LRADataset
     model_type = BertForSequenceClassification
     eval_func = eval_classification_task
+
+@dataclass
+class S4SequenceClassification:
+    """Task for basic sequence classification which treats all sequences as
+    having same length."""
+    dataset_type = LRADataset
+    model_type = S4ForSequenceClassification
+    eval_func = eval_classification_task
+    config_type = S4Config
 
 @dataclass
 class TextClassification:
@@ -68,6 +79,13 @@ class BertPretraining:
     dataset_type = BertPretrainingDatasetFactory
     model_type = DANetForPreTraining
     eval_func = eval_mlm_classification_task
+
+@dataclass
+class S4BertPretraining:
+    dataset_type = BertPretrainingDatasetFactory
+    model_type = S4ForPreTraining
+    eval_func = eval_mlm_classification_task
+    config_type = S4Config
 
 @dataclass
 class BertMLM:
@@ -309,12 +327,14 @@ class TaskRegistry:
 
 
 TaskRegistry.register_task("sequence_classification", SequenceClassification)
+TaskRegistry.register_task("s4_sequence_classification", S4SequenceClassification)
 TaskRegistry.register_task("text_classification", TextClassification)
 TaskRegistry.register_task("texts_matching", TextsMatching)
 TaskRegistry.register_task("sequence_classification_mlm", SequenceClassificationMLM)
 TaskRegistry.register_task("text_classification_mlm", TextClassificationMLM)
 TaskRegistry.register_task("aan_text_classification_mlm", AANTextClassificationMLM)
 TaskRegistry.register_task("bert_pretraining", BertPretraining)
+TaskRegistry.register_task("s4_pretraining", S4BertPretraining)
 TaskRegistry.register_task("bert_mlm", BertMLM)
 TaskRegistry.register_task("gpt_pretraining", GptPretraining)
 TaskRegistry.register_task("transformer_bert_pretraining", TransformerBertPretraining)
